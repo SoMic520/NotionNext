@@ -6,3 +6,38 @@
 .fa-info:before {
     content: "\f05a";
 }
+
+/* 点击涟漪 */
+.fx-ripple {
+  position: fixed;
+  left: 0; top: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+.fx-ripple::after{
+  content:'';
+  position:absolute; left:var(--x); top:var(--y);
+  width: 2px; height: 2px; border-radius: 9999px;
+  border: 2px solid var(--color, rgba(0,0,0,.22));
+  transform: translate(-50%,-50%) scale(1);
+  animation: fx-ripple-ani var(--dur, 300ms) cubic-bezier(.2,.7,.3,1) forwards;
+}
+@keyframes fx-ripple-ani {
+  to { transform: translate(-50%,-50%) scale(var(--scale, 13)); opacity: 0; }
+}
+
+/* 点击词条 */
+.fx-word {
+  position: fixed; left:0; top:0;
+  pointer-events: none; z-index: 9999;
+  transform: translate(-50%,-50%);
+  color: var(--color, rgba(0,0,0,.72));
+  font-size: 14px; font-weight: 600;
+  user-select: none; white-space: nowrap;
+  animation: fx-word-rise 760ms ease-out forwards;
+}
+@keyframes fx-word-rise {
+  0%   { opacity:.95; transform: translate(-50%,-50%) translateY(0)  scale(1); }
+  100% { opacity:0;   transform: translate(-50%,-50%) translateY(-52px) scale(1.04); }
+}
