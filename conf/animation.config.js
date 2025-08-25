@@ -12,7 +12,6 @@ module.exports = {
     '251, 243, 140'
   ],
 
-module.exports = {
   // 鼠标跟随特效
   MOUSE_FOLLOW: process.env.NEXT_PUBLIC_MOUSE_FOLLOW || true, // 开关
   // 这两个只有在鼠标跟随特效开启时才生效
