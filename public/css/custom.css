@@ -6,3 +6,54 @@
 .fa-info:before {
     content: "\f05a";
 }
+
+/* ===== Cursor FX Styles ===== */
+
+/* 点击涟漪（彩色边框水波） */
+.fx-ripple {
+  position: fixed;
+  left: 0; top: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+.fx-ripple::after{
+  content:'';
+  position:absolute; left:var(--x); top:var(--y);
+  width: 2px; height: 2px; border-radius: 9999px;
+  border: 2px solid var(--color, rgba(0,0,0,.22));
+  transform: translate(-50%,-50%) scale(1);
+  animation: fx-ripple-ani var(--dur, 280ms) cubic-bezier(.2,.7,.3,1) forwards;
+  background: transparent;
+}
+@keyframes fx-ripple-ani {
+  to { transform: translate(-50%, -50%) scale(var(--scale, 12)); opacity: 0; }
+}
+
+/* 点击词条（同色上浮消失） */
+.fx-word {
+  position: fixed; left:0; top:0; pointer-events: none; z-index: 9999;
+  transform: translate(-50%,-50%);
+  color: var(--color, rgba(0,0,0,.72));
+  font-size: 14px; user-select: none; white-space: nowrap; font-weight: 600;
+  animation: fx-word-rise 680ms ease-out forwards;
+}
+@keyframes fx-word-rise {
+  0%   { opacity:.95; transform: translate(-50%,-50%) translateY(0)  scale(1);   }
+  100% { opacity:0;   transform: translate(-50%,-50%) translateY(-46px) scale(1.03); }
+}
+
+/* 拖尾粒子基础 */
+span.particle {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 999;
+  will-change: transform, top, left, opacity;
+}
+
+/* 低动效偏好（系统设置“减少动态效果”时） */
+@media (prefers-reduced-motion: reduce) {
+  .fx-ripple::after { animation-duration: 200ms; }
+  .fx-word { animation-duration: 480ms; }
+}
