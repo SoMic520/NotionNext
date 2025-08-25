@@ -3,7 +3,7 @@
  */
 module.exports = {
   // 鼠标点击烟花特效
-  FIREWORKS: process.env.NEXT_PUBLIC_FIREWORKS || true, // 开关
+  FIREWORKS: process.env.NEXT_PUBLIC_FIREWORKS || false, // 开关
   // 烟花色彩，感谢 https://github.com/Vixcity 提交的色彩
   FIREWORKS_COLOR: [
     '255, 20, 97',
@@ -20,13 +20,13 @@ module.exports = {
   MOUSE_FOLLOW_EFFECT_COLOR: '#ef672a', // 鼠标点击特效颜色 #xxxxxx 或者 rgba(r,g,b,a)
 
   // 樱花飘落特效
-  SAKURA: process.env.NEXT_PUBLIC_SAKURA || true, // 开关
+  SAKURA: process.env.NEXT_PUBLIC_SAKURA || false, // 开关
   // 漂浮线段特效
   NEST: process.env.NEXT_PUBLIC_NEST || false, // 开关
   // 动态彩带特效
   FLUTTERINGRIBBON: process.env.NEXT_PUBLIC_FLUTTERINGRIBBON || false, // 开关
   // 静态彩带特效
-  RIBBON: process.env.NEXT_PUBLIC_RIBBON || false, // 开关
+  RIBBON: process.env.NEXT_PUBLIC_RIBBON || true, // 开关
   // 星空雨特效 黑夜模式才会生效
   STARRY_SKY: process.env.NEXT_PUBLIC_STARRY_SKY || false, // 开关
   // ANIMATE.css 动画
@@ -34,3 +34,27 @@ module.exports = {
     process.env.NEXT_PUBLIC_ANIMATE_CSS_URL ||
     'https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css' // 动画CDN
 }
+
+// 鼠标点击汉字动效
+export default {
+  // 涟漪效果
+  ripple: {
+    enabled: true,     // 打开涟漪
+    duration: 300,     // 动画时长（毫秒）
+    scale: 13          // 扩散倍数
+  },
+
+  // 点击词条效果
+  wordsFX: {
+    enabled: true,     // 打开词条
+    duration: 760,     // 词条上浮时间（毫秒）
+    words: ['加油','今天会更好','保持专注','Nice!','冲！'], // 自定义词条
+    colors: ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899'] // 颜色
+  },
+
+  // 移动端是否关闭
+  mobile: {
+    disableOnMobile: true
+  }
+}
+
