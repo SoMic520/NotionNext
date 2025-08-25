@@ -34,27 +34,3 @@ module.exports = {
     process.env.NEXT_PUBLIC_ANIMATE_CSS_URL ||
     'https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css' // 动画CDN
 }
-
-// 鼠标点击汉字动效
-export default {
-  // 涟漪效果
-  ripple: {
-    enabled: true,     // 打开涟漪
-    duration: 300,     // 动画时长（毫秒）
-    scale: 13          // 扩散倍数
-  },
-
-  // 点击词条效果
-  wordsFX: {
-    enabled: true,     // 打开词条
-    duration: 760,     // 词条上浮时间（毫秒）
-    words: ['加油','今天会更好','保持专注','Nice!','冲！'], // 自定义词条
-    colors: ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899'] // 颜色
-  },
-
-  // 移动端是否关闭
-  mobile: {
-    disableOnMobile: true
-  }
-}
-
