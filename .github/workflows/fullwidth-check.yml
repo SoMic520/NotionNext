@@ -1,0 +1,19 @@
+name: Fullwidth Guard
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail on fullwidth punctuation
+        run: |
+          set -e
+          # 扫描常见全角符号与中文引号、全角空格
+          if git ls-files | xargs -I{} bash -lc "grep -n -P '[。，“”‘’：；（）【】　]' '{}' && exit 0" | grep -q . ; then
+            echo "::error ::Detected fullwidth punctuation in repo."
+            exit 1
+          fi
+          echo "No fullwidth punctuation found."
