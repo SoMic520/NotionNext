@@ -21,4 +21,4 @@ module.exports = {
   CONTACT_WEHCHAT_PUBLIC:
     process.env.NEXT_PUBLIC_CONTACT_WEHCHAT_PUBLIC ||
     'https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzg2MjgyMjYyOA==&scene=124#wechat_redirect', // 微信公众号
-};
+}
