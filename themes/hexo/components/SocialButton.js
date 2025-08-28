@@ -137,7 +137,7 @@ const SocialButton = () => {
             href={CONTACT_XIAOHONGSHU}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              className='transform hover:scale-125 duration-150 w-6'
+              className='transform hover:scale-125 duration-150 w-4'
               src='/svg/xiaohongshu.svg'
               alt='小红书'
             />
