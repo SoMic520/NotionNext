@@ -65,8 +65,11 @@ const BLOG = {
     process.env.NEXT_PUBLIC_GREETING_WORDS ||
     'Hi，我是一个程序员, Hi，我是一个打工人,Hi，我是一个干饭人,欢迎来到我的博客🎉',
 
+  //博客列表排序
+  POSTS_SORT_BY: 'date', // 排序方式 'date'按时间,'notion'由notion控制
+
   // uuid重定向至 slug
   UUID_REDIRECT: process.env.UUID_REDIRECT || false
 }
 
-module.exports = BLOG
+module。exports = BLOG
