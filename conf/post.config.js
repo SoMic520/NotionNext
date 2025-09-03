@@ -1,13 +1,13 @@
 /**
  * 文章相关功能
  */
-module。exports = {
+module.exports = {
   // 文章URL前缀
-  POST_URL_PREFIX: process.env.NEXT_PUBLIC_POST_URL_PREFIX ?? 'article',
+  POST_URL_PREFIX: process.env.NEXT_PUBLIC_POST_URL_PREFIX || ' ',
   // POST类型文章的默认路径前缀，例如默认POST类型的路径是  /article/[slug]
   // 如果此项配置为 '' 空， 则文章将没有前缀路径
-  // 支援類似 WP 可自訂文章連結格式的功能：https://wordpress.org/documentation/article/customize-permalinks/，目前只先實作 %year%/%month%/%day%
-  // 例：如想連結改成前綴 article + 時間戳記，可變更為： 'article/%year%/%month%/%day%'
+  // 支持类似 WordPress 可自定义文章链接格式的功能：https://wordpress.org/documentation/article/customize-permalinks/，目前只先實作 %year%/%month%/%day%
+  // 例：如想将链接改成前缀 article + 时间戳记，可更改为： 'article/%year%/%month%/%day%'
 
   POST_SCHEDULE_PUBLISH:
     process.env.NEXT_PUBLIC_NOTION_SCHEDULE_PUBLISH || true, // 按照文章的发布时间字段，控制自动上下架
