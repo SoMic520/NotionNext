@@ -41,4 +41,5 @@ const NavButtonGroup = (props) => {
     </nav>
   )
 }
-export 默认 NavButtonGroup
+
+export default NavButtonGroup
