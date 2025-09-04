@@ -1,6 +1,8 @@
 import SmartLink from '@/components/SmartLink'
-// 新增引入
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs'
+import dynamic from 'next/dynamic'
+
+// 动态引入登录/用户按钮组件，禁用 SSR，避免构建报错
+const HexoAuthButtons = dynamic(() => import('./HexoAuthButtons'), { ssr: false })
 
 /**
  * 首页导航大按钮组件
@@ -34,20 +36,9 @@ const NavButtonGroup = (props) => {
         )
       })}
 
-      {/* 在这里插入登录/用户按钮 */}
-      <div className="w-full flex justify-center md:justify-start md:w-auto mt-4 md:mt-0 md:ml-4">
-        <SignedOut>
-          <SignInButton mode="modal">
-            <button className="px-3 py-1 rounded-md border hover:bg-black/5">
-              登录
-            </button>
-          </SignInButton>
-        </SignedOut>
-        <SignedIn>
-          <UserButton afterSignOutUrl="/" />
-        </SignedIn>
-      </div>
+      {/* 登录/用户按钮（仅在客户端渲染） */}
+      <HexoAuthButtons />
     </nav>
   )
 }
-export default NavButtonGroup
+export 默认 NavButtonGroup
