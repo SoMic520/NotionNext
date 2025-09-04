@@ -135,12 +135,7 @@ const SocialButton = () => {
             rel='noreferrer'
             title={'小红书'}
             href={CONTACT_XIAOHONGSHU}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className='transform hover:scale-125 duration-150 w-5'
-              src='/svg/xiaohongshu.svg'
-              alt='小红书'
-            />
+            <i className='transform hover:scale-125 duration-150 fab fa-book dark:hover:text-indigo-400 hover:text-indigo-600' />
           </a>
         )}
         {CONTACT_ZHISHIXINGQIU && (
