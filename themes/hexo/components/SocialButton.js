@@ -135,7 +135,7 @@ const SocialButton = () => {
             rel='noreferrer'
             title={'小红书'}
             href={CONTACT_XIAOHONGSHU}>
-            <i className='transform hover:scale-125 duration-150 fab fa-square dark:hover:text-indigo-400 hover:text-indigo-600' />
+            <i className='transform hover:scale-125 duration-150 fas fa-book dark:hover:text-indigo-400 hover:text-indigo-600' />
           </a>
         )}
         {CONTACT_ZHISHIXINGQIU && (
