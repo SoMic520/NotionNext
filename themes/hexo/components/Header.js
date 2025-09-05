@@ -15,6 +15,9 @@ import SideBar from './SideBar'
 import SideBarDrawer from './SideBarDrawer'
 import TagGroups from './TagGroups'
 
+// ✅ 新增：导入 Clerk 组件
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs'
+
 let windowTop = 0
 
 /**
@@ -61,8 +64,6 @@ const Header = props => {
       // 导航栏和头图是否重叠
       const scrollInHeader =
         header && (scrollS < 10 || scrollS < header?.clientHeight - 50) // 透明导航条的条件
-
-      // const textWhite = header && scrollInHeader
 
       if (scrollInHeader) {
         nav && nav.classList.replace('bg-white', 'bg-none')
@@ -175,6 +176,16 @@ const Header = props => {
             </div>
             {showSearchButton && <SearchButton />}
             {showRandomButton && <ButtonRandomPost {...props} />}
+
+            {/* ✅ 新增：未登录显示“登录”按钮；已登录显示头像/退出 */}
+            <SignedOut>
+              <SignInButton mode='modal'>
+                <button className='px-3 py-1 rounded border'>登录</button>
+              </SignInButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton afterSignOutUrl='/' />
+            </SignedIn>
           </div>
         </div>
       </div>
