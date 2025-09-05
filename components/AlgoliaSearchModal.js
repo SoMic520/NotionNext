@@ -1,3 +1,10 @@
+import dynamic from 'next/dynamic'
+import { siteConfig } from '@/lib/config'
+const HexoAuthButtons = dynamic(
+  () => import('@/themes/hexo/components/HexoAuthButtons'),
+  { ssr: false }
+)
+
 import replaceSearchResult from '@/components/Mark'
 import { siteConfig } from '@/lib/config'
 import { useGlobal } from '@/lib/global'
