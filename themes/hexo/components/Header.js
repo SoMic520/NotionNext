@@ -1,5 +1,3 @@
-// 放在文件顶部的 import 区域
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs'
 import { siteConfig } from '@/lib/config'
 import { useGlobal } from '@/lib/global'
 import throttle from 'lodash.throttle'
@@ -177,17 +175,7 @@ const Header = props => {
             </div>
             {showSearchButton && <SearchButton />}
             {showRandomButton && <ButtonRandomPost {...props} />}
-                {/* 👇在这里插入 Clerk 登录组件 */}
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button className="px-3 py-1 rounded border">登录</button>
-              </SignInButton>
-            </SignedOut>
-
-            <SignedIn>
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
-         </div>
+          </div>
         </div>
       </div>
 
