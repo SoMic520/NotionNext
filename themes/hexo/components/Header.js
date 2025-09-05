@@ -15,15 +15,13 @@ import SideBar from './SideBar'
 import SideBarDrawer from './SideBarDrawer'
 import TagGroups from './TagGroups'
 
-// ✅ 新增：导入 Clerk 组件
+// ✅ Clerk 组件（未登录/已登录、登录按钮、用户头像）
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs'
 
 let windowTop = 0
 
 /**
- * 顶部导航
- * @param {*} param0
- * @returns
+ * 顶部导航（Hexo 主题）
  */
 const Header = props => {
   const searchDrawer = useRef()
@@ -34,13 +32,15 @@ const Header = props => {
   const showSearchButton = siteConfig('HEXO_MENU_SEARCH', false, CONFIG)
   const showRandomButton = siteConfig('HEXO_MENU_RANDOM', false, CONFIG)
 
-  const toggleMenuOpen = () => {
-    changeShow(!isOpen)
-  }
+  // === 多语言开关：中文/英文按钮文字 ===
+  // 优先用路由 locale，其次用站点配置的 LANG（如 'zh-CN' / 'en-US'）
+  const langFromConfig = siteConfig('LANG', 'zh-CN', CONFIG)
+  const currentLang = (router?.locale || langFromConfig || 'zh-CN').toLowerCase()
+  const isZH = currentLang.startsWith('zh')
+  const SIGN_IN_TEXT = isZH ? '登录' : 'Sign in'
 
-  const toggleSideBarClose = () => {
-    changeShow(false)
-  }
+  const toggleMenuOpen = () => changeShow(!isOpen)
+  const toggleSideBarClose = () => changeShow(false)
 
   // 监听滚动
   useEffect(() => {
@@ -63,7 +63,7 @@ const Header = props => {
       const header = document.querySelector('#header')
       // 导航栏和头图是否重叠
       const scrollInHeader =
-        header && (scrollS < 10 || scrollS < header?.clientHeight - 50) // 透明导航条的条件
+        header && (scrollS < 10 || scrollS < header?.clientHeight - 50)
 
       if (scrollInHeader) {
         nav && nav.classList.replace('bg-white', 'bg-none')
@@ -162,27 +162,27 @@ const Header = props => {
           {/* 右侧功能 */}
           <div className='mr-1 flex justify-end items-center '>
             <div className='hidden lg:flex'>
-              {' '}
               <MenuListTop {...props} />
             </div>
+
             <div
               onClick={toggleMenuOpen}
               className='w-8 justify-center items-center h-8 cursor-pointer flex lg:hidden'>
-              {isOpen ? (
-                <i className='fas fa-times' />
-              ) : (
-                <i className='fas fa-bars' />
-              )}
+              {isOpen ? <i className='fas fa-times' /> : <i className='fas fa-bars' />}
             </div>
+
             {showSearchButton && <SearchButton />}
             {showRandomButton && <ButtonRandomPost {...props} />}
 
-            {/* ✅ 新增：未登录显示“登录”按钮；已登录显示头像/退出 */}
+            {/* ✅ 登录/头像（自动中文/英文） */}
             <SignedOut>
               <SignInButton mode='modal'>
-                <button className='px-3 py-1 rounded border'>登录</button>
+                <button className='px-3 py-1 rounded border'>
+                  {SIGN_IN_TEXT}
+                </button>
               </SignInButton>
             </SignedOut>
+
             <SignedIn>
               <UserButton afterSignOutUrl='/' />
             </SignedIn>
