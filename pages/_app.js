@@ -1,5 +1,3 @@
-import '@waline/client/style'
-
 // import '@/styles/animate.css' // @see https://animate.style/
 import '@/styles/globals.css'
 import '@/styles/utility-patterns.css'
@@ -12,7 +10,7 @@ import useAdjustStyle from '@/hooks/useAdjustStyle'
 import { GlobalContextProvider } from '@/lib/global'
 import { getBaseLayoutByTheme } from '@/themes/theme'
 import { useRouter } from 'next/router'
-import { useCallback, useMemo } from 'react'
+import { useCallback， useMemo } from 'react'
 import { getQueryParam } from '../lib/utils'
 
 // 各种扩展插件 这个要阻塞引入
