@@ -4,81 +4,84 @@ import { init } from '@waline/client'
 import '@waline/client/style'
 import { useRouter } from 'next/router'
 import { siteConfig } from '@/lib/config'
-import { useUser } from '@clerk/nextjs' // ✅ 正常使用 Hook（不要 require 动态引）
+import { useUser } from '@clerk/nextjs' // 若你用的是 @clerk/clerk-react，就改成它
 
 let waline = null
 let lastPath = ''
 
-const WalineComponent = (props) => {
+export default function WalineComponent(props) {
   const containerRef = useRef(null)
   const router = useRouter()
-  const { user, isLoaded } = useUser() // ✅ Clerk 登录态
+  const { user, isLoaded } = useUser()
 
-  // 1) 把 Clerk 用户写入 waline-user（Waline 会自动读取 nick/mail/link）
+  // 1) Clerk -> localStorage('waline-user')
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!isLoaded) return
-
-    try {
-      if (user) {
-        const nick =
-          user.username ||
-          [user.firstName, user.lastName].filter(Boolean).join(' ') ||
-          user.primaryEmailAddress?.emailAddress?.split('@')?.[0] ||
-          'User'
-
-        const mail =
-          user.primaryEmailAddress?.emailAddress ||
-          user.emailAddresses?.[0]?.emailAddress ||
-          ''
-
-        const link = user.imageUrl || ''
-
+    if (typeof window === 'undefined' || !isLoaded) return
+    if (user) {
+      const nick =
+        user.username ||
+        [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+        user.primaryEmailAddress?.emailAddress?.split('@')?.[0] ||
+        'User'
+      const mail =
+        user.primaryEmailAddress?.emailAddress ||
+        user.emailAddresses?.[0]?.emailAddress ||
+        ''
+      const link = user.imageUrl || ''
+      try {
         localStorage.setItem('waline-user', JSON.stringify({ nick, mail, link }))
-      } else {
-        // 未登录时清理，避免“粘住旧账号”
-        localStorage.removeItem('waline-user')
-      }
-    } catch {}
+      } catch {}
+    } else {
+      try { localStorage.removeItem('waline-user') } catch {}
+    }
   }, [user, isLoaded])
 
-  // 2) 初始化 Waline（serverURL 缺失时不初始化，避免整页白屏）
+  // 2) 初始化 / 重建 Waline（确保先写好 waline-user，再 init）
   useEffect(() => {
     if (typeof window === 'undefined') return
     const serverURL = siteConfig('COMMENT_WALINE_SERVER_URL')
-    if (!containerRef.current || !serverURL) return
-    if (waline) return
+    // 条件：容器就绪 + serverURL 存在 + Clerk 已判定状态
+    if (!containerRef.current || !serverURL || !isLoaded) return
 
-    waline = init({
-      el: containerRef.current,
-      serverURL,
-      lang: siteConfig('LANG'),
-      dark: 'html.dark',
-      reaction: true,
-      login: 'disable', // ✅ 关闭 Waline 自带登录，用我们写入的 waline-user
-      emoji: [
-        '//npm.elemecdn.com/@waline/emojis@1.1.0/tieba',
-        '//npm.elemecdn.com/@waline/emojis@1.1.0/weibo',
-        '//npm.elemecdn.com/@waline/emojis@1.1.0/bilibili'
-      ],
-      ...props
-    })
+    // 如果已存在实例，说明登录态变更时需要重建
+    if (waline) {
+      try { waline.destroy() } catch {}
+      waline = null
+    }
+
+    try {
+      waline = init({
+        el: containerRef.current,
+        serverURL,
+        lang: siteConfig('LANG'),
+        dark: 'html.dark',
+        reaction: true,
+        login: 'disable', // 关闭 Waline 自带登录，用我们写入的 waline-user
+        // 若你希望强制要求昵称/邮箱，可加上 requiredMeta，如：['nick','mail']
+        // meta/requiredMeta 参考官方文档
+        // meta: ['nick','mail','link'],
+        // requiredMeta: ['nick','mail'],
+        emoji: [
+          '//npm.elemecdn.com/@waline/emojis@1.1.0/tieba',
+          '//npm.elemecdn.com/@waline/emojis@1.1.0/weibo',
+          '//npm.elemecdn.com/@waline/emojis@1.1.0/bilibili'
+        ],
+        ...props
+      })
+    } catch (e) {
+      console.error('Waline init error:', e)
+    }
 
     const updateWaline = (url) => {
       if (!waline) return
       if (url !== lastPath) {
         lastPath = url
-        try {
-          waline.update(props)
-        } catch (e) {
-          console.error('Waline update error:', e)
-        }
+        try { waline.update(props) } catch (e) {}
       }
     }
-
     router.events.on('routeChangeComplete', updateWaline)
 
-    // 带锚点时滚动并高亮
+    // 带锚点时滚动并高亮（尽量包裹 try）
     try {
       const anchor = window.location.hash
       if (anchor) {
@@ -108,13 +111,10 @@ const WalineComponent = (props) => {
       try { waline?.destroy() } catch {}
       waline = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerRef.current])
+  }, [containerRef.current, isLoaded, user]) // ← 登录态变化会触发重建
 
   const hasServer = typeof window !== 'undefined' && siteConfig('COMMENT_WALINE_SERVER_URL')
   if (!hasServer) return null
 
   return <div id="waline" ref={containerRef} />
 }
-
-export default WalineComponent
