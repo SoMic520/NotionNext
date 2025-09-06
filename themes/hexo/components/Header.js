@@ -16,7 +16,7 @@ import SideBar from './SideBar'
 import SideBarDrawer from './SideBarDrawer'
 import TagGroups from './TagGroups'
 
-// ❌ 移除 Clerk 相关 import（SignedIn/SignedOut/SignInButton/UserButton）
+// ⚠️ 已移除 Clerk 相关 import（SignedIn / SignedOut / SignInButton / UserButton）
 
 let windowTop = 0
 
@@ -32,19 +32,92 @@ const Header = props => {
   const showSearchButton = siteConfig('HEXO_MENU_SEARCH', false, CONFIG)
   const showRandomButton = siteConfig('HEXO_MENU_RANDOM', false, CONFIG)
 
-  // === 多语言开关：中文/英文按钮文字 ===
+  // 多语言按钮文字
   const langFromConfig = siteConfig('LANG', 'zh-CN', CONFIG)
   const currentLang = (router?.locale || langFromConfig || 'zh-CN').toLowerCase()
   const isZH = currentLang.startsWith('zh')
   const SIGN_IN_TEXT = isZH ? '登录' : 'Sign in'
-
-  // 仅新增：Waline 登录弹窗的开关 & 登录页地址（使用你的独立服务）
-  const [wlOpen, setWlOpen] = useState(false)
-  const WALINE_LOGIN_URL = '/api/waline/ui/login'
-  // 如需进入后台自行管理：const WALINE_DASHBOARD_URL = 'https://waline.somac.top/ui'
+  const MANAGE_TEXT = isZH ? '管理' : 'Dashboard'
+  const SIGN_OUT_TEXT = isZH ? '退出' : 'Sign out'
 
   const toggleMenuOpen = () => changeShow(!isOpen)
   const toggleSideBarClose = () => changeShow(false)
+
+  // ===== Waline 登录态 & 弹窗（仅此文件内联）=====
+  const [wlUser, setWlUser] = useState(null)
+  const [wlLoading, setWlLoading] = useState(true)
+  const [wlOpen, setWlOpen] = useState(false)
+
+  // 同域登录页地址（方案 B 核心）
+  const WALINE_LOGIN_PATH = '/api/waline/ui/login' // ← 关键：同域地址
+
+  // 读取当前登录用户
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch('/api/waline/api/user', { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          setWlUser(data?.data || null)
+        } else {
+          setWlUser(null)
+        }
+      } catch (e) {
+        setWlUser(null)
+      } finally {
+        setWlLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  // 退出登录
+  const handleWalineLogout = async () => {
+    try { await fetch('/api/waline/api/token', { method: 'DELETE', credentials: 'include' }) } catch {}
+    try { await fetch('/api/waline/api/logout', { method: 'POST', credentials: 'include' }) } catch {}
+    if (typeof window !== 'undefined') location.reload()
+  }
+
+  // 轻量登录弹窗（内嵌 Waline 同域登录页）
+  const WalineLoginModal = ({ open, onClose, onLoggedIn }) => {
+    useEffect(() => {
+      if (!open) return
+      // 轮询登录状态；登录成功自动关闭并更新用户
+      const t = setInterval(async () => {
+        try {
+          const res = await fetch('/api/waline/api/user', { credentials: 'include' })
+          if (res.ok) {
+            const d = await res.json()
+            if (d?.data) {
+              onLoggedIn(d.data)
+              onClose()
+            }
+          }
+        } catch {}
+      }, 1200)
+      return () => clearInterval(t)
+    }, [open, onClose, onLoggedIn])
+
+    if (!open) return null
+    return (
+      <div className="fixed inset-0 z-[9999]">
+        <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+        <div className="relative mx-auto my-12 w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 h-12 border-b">
+            <div className="font-semibold">{SIGN_IN_TEXT}</div>
+            <button onClick={onClose} className="text-xl leading-none px-2" aria-label="Close">×</button>
+          </div>
+          {/* 核心：同域 Waline 登录页，避免第三方 Cookie 被拦截 */}
+          <iframe
+            src={WALINE_LOGIN_PATH}
+            className="w-full h-[520px]"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      </div>
+    )
+  }
+  // ===== Waline 登录态 & 弹窗 End =====
 
   // 监听滚动
   useEffect(() => {
@@ -178,39 +251,42 @@ const Header = props => {
             {showSearchButton && <SearchButton />}
             {showRandomButton && <ButtonRandomPost {...props} />}
 
-            {/* ✅ 把原 Clerk 登录弹窗替换为 Waline 登录网站（不改其它样式） */}
-            <button
-              onClick={() => setWlOpen(true)}
-              className='px-3 py-1 rounded border'
-            >
-              {SIGN_IN_TEXT}
-            </button>
-
-            {wlOpen && (
-              <div className='fixed inset-0 z-[9999]'>
-                <div
-                  className='absolute inset-0 bg-black/40'
-                  onClick={() => setWlOpen(false)}
+            {/* ✅ 用 Waline 弹窗替换原 Clerk 登录弹窗；布局不变 */}
+            {wlLoading ? (
+              <div className='opacity-60 text-sm ml-2'>…</div>
+            ) : !wlUser ? (
+              <>
+                <button
+                  onClick={() => setWlOpen(true)}
+                  className='px-3 py-1 rounded border ml-2'
+                >
+                  {SIGN_IN_TEXT}
+                </button>
+                <WalineLoginModal
+                  open={wlOpen}
+                  onClose={() => setWlOpen(false)}
+                  onLoggedIn={(u) => setWlUser(u)}
                 />
-                <div className='relative mx-auto my-12 w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 shadow-xl overflow-hidden'>
-                  <div className='flex items-center justify-between px-4 h-12 border-b'>
-                    <div className='font-semibold'>{SIGN_IN_TEXT}</div>
-                    <button
-                      onClick={() => setWlOpen(false)}
-                      className='text-xl leading-none px-2'
-                      aria-label='Close'
-                    >
-                      ×
-                    </button>
-                  </div>
-
-                  {/* 这里就是“把弹窗网站改为 Waline 登录网站” */}
-                  <iframe
-                    src={WALINE_LOGIN_URL}
-                    className='w-full h-[520px]'
-                    referrerPolicy='no-referrer'
-                  />
-                </div>
+              </>
+            ) : (
+              <div className='flex items-center gap-2 ml-2'>
+                {wlUser.displayName && (
+                  <span className='text-sm opacity-80' title={wlUser.displayName}>
+                    {wlUser.displayName}
+                  </span>
+                )}
+                <a
+                  href='/api/waline/ui'
+                  className='px-3 py-1 rounded border text-sm'
+                >
+                  {MANAGE_TEXT}
+                </a>
+                <button
+                  onClick={handleWalineLogout}
+                  className='px-3 py-1 rounded border text-sm'
+                >
+                  {SIGN_OUT_TEXT}
+                </button>
               </div>
             )}
           </div>
