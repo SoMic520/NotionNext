@@ -1,3 +1,4 @@
+import '@waline/client/dist/waline.css'
 // import '@/styles/animate.css' // @see https://animate.style/
 import '@/styles/globals.css'
 import '@/styles/utility-patterns.css'
