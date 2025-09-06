@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-import { NextRequest， NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { checkStrIsNotionId， getLastPartOfUrl } from '@/lib/utils'
 import { idToUuid } from 'notion-utils'
 import BLOG from './blog.config'
