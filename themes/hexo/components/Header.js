@@ -16,7 +16,7 @@ import SideBar from './SideBar'
 import SideBarDrawer from './SideBarDrawer'
 import TagGroups from './TagGroups'
 
-// ❌ 移除 Clerk 相关：SignedIn / SignedOut / SignInButton / UserButton
+// ❌ 移除 Clerk 相关 import（SignedIn/SignedOut/SignInButton/UserButton）
 
 let windowTop = 0
 
@@ -32,27 +32,19 @@ const Header = props => {
   const showSearchButton = siteConfig('HEXO_MENU_SEARCH', false, CONFIG)
   const showRandomButton = siteConfig('HEXO_MENU_RANDOM', false, CONFIG)
 
-  // 多语言按钮文字
+  // === 多语言开关：中文/英文按钮文字 ===
   const langFromConfig = siteConfig('LANG', 'zh-CN', CONFIG)
   const currentLang = (router?.locale || langFromConfig || 'zh-CN').toLowerCase()
   const isZH = currentLang.startsWith('zh')
   const SIGN_IN_TEXT = isZH ? '登录' : 'Sign in'
-  const MANAGE_TEXT = isZH ? '管理' : 'Dashboard'
-  const SIGN_OUT_TEXT = isZH ? '退出' : 'Sign out'
+
+  // 仅新增：Waline 登录弹窗的开关 & 登录页地址（使用你的独立服务）
+  const [wlOpen, setWlOpen] = useState(false)
+  const WALINE_LOGIN_URL = 'https://waline.somac.top/ui/login'
+  // 如需进入后台自行管理：const WALINE_DASHBOARD_URL = 'https://waline.somac.top/ui'
 
   const toggleMenuOpen = () => changeShow(!isOpen)
   const toggleSideBarClose = () => changeShow(false)
-
-  // ===== 仅新增：Waline 登录弹窗开关 & 登录页地址 =====
-  const [wlOpen, setWlOpen] = useState(false)
-  const [wlLoginUrl, setWlLoginUrl] = useState('/api/waline/ui/login') // 默认相对地址
-  useEffect(() => {
-    // 使用绝对地址更稳，避免某些路由把相对 /api/* 回退到首页
-    if (typeof window !== 'undefined') {
-      setWlLoginUrl(`${window.location.origin}/api/waline/ui/login`)
-    }
-  }, [])
-  // ===== End =====
 
   // 监听滚动
   useEffect(() => {
@@ -186,7 +178,7 @@ const Header = props => {
             {showSearchButton && <SearchButton />}
             {showRandomButton && <ButtonRandomPost {...props} />}
 
-            {/* ✅ 仅替换登录弹窗为 Waline 登录页（其它不动） */}
+            {/* ✅ 把原 Clerk 登录弹窗替换为 Waline 登录网站（不改其它样式） */}
             <button
               onClick={() => setWlOpen(true)}
               className='px-3 py-1 rounded border'
@@ -211,9 +203,10 @@ const Header = props => {
                       ×
                     </button>
                   </div>
+
                   {/* 这里就是“把弹窗网站改为 Waline 登录网站” */}
                   <iframe
-                    src={wlLoginUrl}
+                    src={WALINE_LOGIN_URL}
                     className='w-full h-[520px]'
                     referrerPolicy='no-referrer'
                   />
