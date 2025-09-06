@@ -1,6 +1,6 @@
 // pages/api/waline.js
-const Waline = require('@waline/vercel')
+import Waline from '@waline/vercel'
 
-module.exports = Waline({
-  // 可按需扩展 locales/plugins，这里留空即可
+export 默认 Waline({
+  // 先留空，跑通再说；要定制可以加 locales / plugins
 })
