@@ -4,119 +4,65 @@ import { init } from '@waline/client'
 import '@waline/client/style'
 import { useRouter } from 'next/router'
 import { siteConfig } from '@/lib/config'
+import { useUser } from '@clerk/nextjs' // ✅ 正常使用 Hook（不要 require 动态引）
 
 let waline = null
 let lastPath = ''
 
-/**
- * 稳健版 Waline 组件：
- * - 动态加载 Clerk（不存在也不会报错）
- * - 在 init 前把 Clerk 用户写入 localStorage('waline-user')
- * - login: 'disable' 只用 Clerk 身份
- * - serverURL 缺失时不初始化，避免报错导致整页空白
- */
 const WalineComponent = (props) => {
   const containerRef = useRef(null)
   const router = useRouter()
+  const { user, isLoaded } = useUser() // ✅ Clerk 登录态
 
-  // 将 Clerk 用户信息写入 localStorage，供 Waline 自动读取
+  // 1) 把 Clerk 用户写入 waline-user（Waline 会自动读取 nick/mail/link）
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return
+    if (!isLoaded) return
 
-      // 动态加载 Clerk（两种包名都试一遍）
-      let useUser = null
-      try {
-        const m = await import('@clerk/nextjs')
-        useUser = m.useUser
-      } catch {}
-      if (!useUser) {
-        try {
-          const m2 = await import('@clerk/clerk-react')
-          useUser = m2.useUser
-        } catch {}
+    try {
+      if (user) {
+        const nick =
+          user.username ||
+          [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+          user.primaryEmailAddress?.emailAddress?.split('@')?.[0] ||
+          'User'
+
+        const mail =
+          user.primaryEmailAddress?.emailAddress ||
+          user.emailAddresses?.[0]?.emailAddress ||
+          ''
+
+        const link = user.imageUrl || ''
+
+        localStorage.setItem('waline-user', JSON.stringify({ nick, mail, link }))
+      } else {
+        // 未登录时清理，避免“粘住旧账号”
+        localStorage.removeItem('waline-user')
       }
-      if (!useUser) return
-      if (cancelled) return
-
-      // 读取当前用户
-      // 注意：hook 只能在组件顶层用，这里不能直接调用。
-      // 处理方式：改为在顶层再写一份 effect（见下面第二个 useEffect），这段仅保留以兼容老环境。
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // 顶层读取 Clerk 用户（推荐）
-  // 如果没安装 Clerk，这个 try 会失败，但我们兜住不让页面崩
-  let clerkUser = null
-  try {
-    // 仅在浏览器且包存在时使用
-    // 这里用 "optional require" 的写法避免打包错误
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const maybeNext = require('@clerk/nextjs')
-    clerkUser = maybeNext?.useUser?.().user ?? null
-  } catch {}
-  if (!clerkUser) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const maybeReact = require('@clerk/clerk-react')
-      clerkUser = maybeReact?.useUser?.().user ?? null
     } catch {}
-  }
+  }, [user, isLoaded])
 
+  // 2) 初始化 Waline（serverURL 缺失时不初始化，避免整页白屏）
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!clerkUser) return
-    try {
-      const nick =
-        clerkUser.username ||
-        [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') ||
-        clerkUser.primaryEmailAddress?.emailAddress?.split('@')?.[0] ||
-        'User'
-
-      const mail =
-        clerkUser.primaryEmailAddress?.emailAddress ||
-        clerkUser.emailAddresses?.[0]?.emailAddress ||
-        ''
-
-      const link = clerkUser.imageUrl || ''
-
-      localStorage.setItem('waline-user', JSON.stringify({ nick, mail, link }))
-    } catch {
-      // 忽略本地存储失败，不能让它把页面干崩
-    }
-  }, [clerkUser])
-
-  // 初始化 Waline
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    // 容器和 serverURL 必须同时就绪
     const serverURL = siteConfig('COMMENT_WALINE_SERVER_URL')
     if (!containerRef.current || !serverURL) return
     if (waline) return
 
-    try {
-      waline = init({
-        el: containerRef.current,
-        serverURL,
-        lang: siteConfig('LANG'),
-        dark: 'html.dark',
-        reaction: true,
-        login: 'disable', // 关键：关闭 Waline 自带登录
-        emoji: [
-          '//npm.elemecdn.com/@waline/emojis@1.1.0/tieba',
-          '//npm.elemecdn.com/@waline/emojis@1.1.0/weibo',
-          '//npm.elemecdn.com/@waline/emojis@1.1.0/bilibili'
-        ],
-        ...props
-      })
-    } catch (e) {
-      console.error('Waline init error:', e)
-    }
+    waline = init({
+      el: containerRef.current,
+      serverURL,
+      lang: siteConfig('LANG'),
+      dark: 'html.dark',
+      reaction: true,
+      login: 'disable', // ✅ 关闭 Waline 自带登录，用我们写入的 waline-user
+      emoji: [
+        '//npm.elemecdn.com/@waline/emojis@1.1.0/tieba',
+        '//npm.elemecdn.com/@waline/emojis@1.1.0/weibo',
+        '//npm.elemecdn.com/@waline/emojis@1.1.0/bilibili'
+      ],
+      ...props
+    })
 
     const updateWaline = (url) => {
       if (!waline) return
@@ -130,11 +76,9 @@ const WalineComponent = (props) => {
       }
     }
 
-    try {
-      router.events.on('routeChangeComplete', updateWaline)
-    } catch {}
+    router.events.on('routeChangeComplete', updateWaline)
 
-    // 锚点高亮逻辑（尽量包裹 try）
+    // 带锚点时滚动并高亮
     try {
       const anchor = window.location.hash
       if (anchor) {
@@ -160,19 +104,13 @@ const WalineComponent = (props) => {
     } catch {}
 
     return () => {
-      try {
-        router.events.off('routeChangeComplete', updateWaline)
-      } catch {}
-      try {
-        waline?.destroy()
-      } catch {}
+      try { router.events.off('routeChangeComplete', updateWaline) } catch {}
+      try { waline?.destroy() } catch {}
       waline = null
     }
-    // 只在首渲染尝试初始化
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerRef.current])
 
-  // 如果没有配置 serverURL，就不渲染，避免触发错误
   const hasServer = typeof window !== 'undefined' && siteConfig('COMMENT_WALINE_SERVER_URL')
   if (!hasServer) return null
 
