@@ -40,7 +40,7 @@ const Header = props => {
 
   // 仅新增：Waline 登录弹窗的开关 & 登录页地址（使用你的独立服务）
   const [wlOpen, setWlOpen] = useState(false)
-  const WALINE_LOGIN_URL = 'https://waline.somac.top/ui/login'
+  const WALINE_LOGIN_URL = '/api/waline/ui/login'
   // 如需进入后台自行管理：const WALINE_DASHBOARD_URL = 'https://waline.somac.top/ui'
 
   const toggleMenuOpen = () => changeShow(!isOpen)
