@@ -3,7 +3,7 @@
  */
 module.exports = {
   // 文章URL前缀
-  POST_URL_PREFIX: process.env.NEXT_PUBLIC_POST_URL_PREFIX || ' ',
+  POST_URL_PREFIX: process.env.NEXT_PUBLIC_POST_URL_PREFIX || '',
   // POST类型文章的默认路径前缀，例如默认POST类型的路径是  /article/[slug]
   // 如果此项配置为 '' 空， 则文章将没有前缀路径
   // 支持类似 WordPress 可自定义文章链接格式的功能：https://wordpress.org/documentation/article/customize-permalinks/
