@@ -3,8 +3,8 @@ import '@/styles/globals.css'
 import '@/styles/utility-patterns.css'
 
 // core styles shared by all of react-notion-x (required)
-import '@/styles/notion.css' //  重写部分notion样式
-import 'react-notion-x/src/styles.css' // 原版的react-notion-x
+import '@/styles/notion.css' //  重写部分 notion 样式
+import 'react-notion-x/src/styles.css' // 原版的 react-notion-x
 
 import useAdjustStyle from '@/hooks/useAdjustStyle'
 import { GlobalContextProvider } from '@/lib/global'
@@ -13,19 +13,20 @@ import { useRouter } from 'next/router'
 import { useCallback, useMemo } from 'react'
 import { getQueryParam } from '../lib/utils'
 
-// 各种扩展插件 这个要阻塞引入
+// 各种扩展插件，这些要阻塞引入
 import BLOG from '@/blog.config'
 import ExternalPlugins from '@/components/ExternalPlugins'
 import SEO from '@/components/SEO'
 import { zhCN } from '@clerk/localizations'
 import dynamic from 'next/dynamic'
-// import { ClerkProvider } from '@clerk/nextjs'
+
+// 使用动态加载 ClerkProvider，避免在非启用 Clerk 的情况下加载相关库
 const ClerkProvider = dynamic(() =>
   import('@clerk/nextjs').then(m => m.ClerkProvider)
 )
 
 /**
- * App挂载DOM 入口文件
+ * App 挂载 DOM 的入口文件
  * @param {*} param0
  * @returns
  */
@@ -42,7 +43,7 @@ const MyApp = ({ Component, pageProps }) => {
     )
   }, [route])
 
-  // 整体布局
+  // 整体布局，根据当前主题动态选择不同的 layout 组件
   const GLayout = useCallback(
     props => {
       const Layout = getBaseLayoutByTheme(theme)
@@ -51,7 +52,10 @@ const MyApp = ({ Component, pageProps }) => {
     [theme]
   )
 
+  // 根据环境变量判断是否启用 Clerk
   const enableClerk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+  // 页面实际内容渲染
   const content = (
     <GlobalContextProvider {...pageProps}>
       <GLayout {...pageProps}>
@@ -61,10 +65,21 @@ const MyApp = ({ Component, pageProps }) => {
       <ExternalPlugins {...pageProps} />
     </GlobalContextProvider>
   )
+
   return (
     <>
       {enableClerk ? (
-        <ClerkProvider localization={zhCN}>{content}</ClerkProvider>
+        <ClerkProvider
+          localization={zhCN}
+          appearance={{
+            layout: {
+              // 关闭开发模式的 UI 提示，便于预览生产环境样式
+              unsafe_disableDevelopmentModeWarnings: true,
+            },
+          }}
+        >
+          {content}
+        </ClerkProvider>
       ) : (
         content
       )}
