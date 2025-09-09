@@ -10,7 +10,7 @@ import useAdjustStyle from '@/hooks/useAdjustStyle'
 import { GlobalContextProvider } from '@/lib/global'
 import { getBaseLayoutByTheme } from '@/themes/theme'
 import { useRouter } from 'next/router'
-import { useCallback, useMemo, useEffect } from 'react'
+import { useCallback, useMemo } from 'react'
 import { getQueryParam } from '../lib/utils'
 
 // 各种扩展插件，这些要阻塞引入
@@ -25,33 +25,13 @@ const ClerkProvider = dynamic(() =>
   import('@clerk/nextjs').then(m => m.ClerkProvider)
 )
 
-// 从 Clerk hooks 里取登录状态
-const useAuth = dynamic(() =>
-  import('@clerk/nextjs').then(m => m.useAuth),
-  { ssr: false }
-)
-
-/**
- * 小组件：监听 Clerk 登录状态，自动同步 Waline 登录
- */
-function SyncWalineLogin() {
-  const { isSignedIn } = useAuth()
-
-  useEffect(() => {
-    if (isSignedIn) {
-      fetch('/api/auth/waline/sync-from-clerk', { method: 'POST' })
-        .then(() => console.log('✅ Waline 登录已同步'))
-        .catch(err => console.error('❌ Waline 同步失败', err))
-    }
-  }, [isSignedIn])
-
-  return null
-}
-
 /**
  * App 挂载 DOM 的入口文件
+ * @param {*} param0
+ * @returns
  */
 const MyApp = ({ Component, pageProps }) => {
+  // 一些可能出现 bug 的样式，可以统一放入该钩子进行调整
   useAdjustStyle()
 
   const route = useRouter()
@@ -63,6 +43,7 @@ const MyApp = ({ Component, pageProps }) => {
     )
   }, [route])
 
+  // 整体布局，根据当前主题动态选择不同的 layout 组件
   const GLayout = useCallback(
     props => {
       const Layout = getBaseLayoutByTheme(theme)
@@ -71,8 +52,10 @@ const MyApp = ({ Component, pageProps }) => {
     [theme]
   )
 
+  // 根据环境变量判断是否启用 Clerk
   const enableClerk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
+  // 页面实际内容渲染
   const content = (
     <GlobalContextProvider {...pageProps}>
       <GLayout {...pageProps}>
@@ -89,11 +72,12 @@ const MyApp = ({ Component, pageProps }) => {
         <ClerkProvider
           localization={zhCN}
           appearance={{
-            layout: { unsafe_disableDevelopmentModeWarnings: true },
+            layout: {
+              // 关闭开发模式的 UI 提示，便于预览生产环境样式
+              unsafe_disableDevelopmentModeWarnings: true,
+            },
           }}
         >
-          {/* 这里插入同步组件 */}
-          <SyncWalineLogin />
           {content}
         </ClerkProvider>
       ) : (
