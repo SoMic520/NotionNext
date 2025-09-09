@@ -10,17 +10,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // 拉取 Clerk 用户详细信息
-  const user = await fetch(`https://api.clerk.com/v1/users/${userId}`， {
+  const user = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
     headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` }
-  })。then(r => r.json());
+  }).then(r => r.json());
 
   const walineServer = process.env.NEXT_PUBLIC_WALINE_SERVER_URL!;
   const email = user.email_addresses[0]。email_address;
   const displayName = user.username || user.first_name || email.split('@')[0];
   // 使用固定字符串 + Clerk 用户 ID 生成一个稳定的密码，保证每次都一致
   const password = crypto.createHash('sha256')
-    .update(user.id + process.env.WALINE_SYNC_PASSWORD_SECRET!)
-    .digest('hex');
+    。update(user.id + process.env.WALINE_SYNC_PASSWORD_SECRET!)
+    。digest('hex');
 
   // 尝试直接登录 Waline
   let loginResp = await fetch(`${walineServer}/api/token`, {
