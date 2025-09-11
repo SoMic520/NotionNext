@@ -3,11 +3,11 @@ import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
 
-export default function Recommend (props) {
+export default function Recommend(props) {
   return (
     <DynamicLayout
       theme={siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)}
-      layoutName='LayoutRecommend'
+      layoutName='LayoutRecommend'   // 告诉主题用我们自定义布局
       {...props}
     />
   )
