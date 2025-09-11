@@ -1,9 +1,10 @@
+// themes/hexo/layouts/LayoutRecommend.jsx
 import { useMemo, useState } from 'react'
 
 export default function LayoutRecommend (props) {
   const { posts = [] } = props
 
-  // 只取含 recommend 的文章（兼容 string / array）
+  // 只取有 recommend 的文章（兼容 string / array）
   const recPosts = useMemo(() => {
     return posts.filter(p => {
       const v = p?.recommend
@@ -12,7 +13,7 @@ export default function LayoutRecommend (props) {
     })
   }, [posts])
 
-  // 动态收集所有 recommend 取值，生成 tabs
+  // 从文章中收集所有推荐类别，作为顶部“推荐类别”按钮
   const tabs = useMemo(() => {
     const s = new Set()
     recPosts.forEach(p => {
@@ -23,8 +24,9 @@ export default function LayoutRecommend (props) {
     return Array.from(s)
   }, [recPosts])
 
-  const [selected, setSelected] = useState(null) // null=全部
+  const [selected, setSelected] = useState(null) // null = 全部
 
+  // 列表数据：就地筛选（不跳转）
   const list = useMemo(() => {
     if (!selected) return recPosts
     return recPosts.filter(p => {
@@ -39,7 +41,7 @@ export default function LayoutRecommend (props) {
     <div className='max-w-3xl mx-auto px-4 py-6'>
       <h1 className='text-2xl font-semibold mb-4'>推荐文章</h1>
 
-      {/* 顶部推荐类别（不跳转） */}
+      {/* 顶部推荐类别（按钮不跳转，仅切过滤） */}
       <div className='flex flex-wrap gap-2 mb-4'>
         <button
           onClick={() => setSelected(null)}
