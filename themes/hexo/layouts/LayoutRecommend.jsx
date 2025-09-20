@@ -1,159 +1,173 @@
 import { useMemo, useState } from 'react'
 
-/**
- * 诊断&容错增强版 Recommend 布局
- * - 同时尝试从 p.recommend、p.ext?.recommend 读取
- * - 只展示 {type: 'Post', status: 'Published'}（可按需改）
- * - 支持 string / string[] / 逗号分隔字符串
- * - 页面顶部显示命中统计 & 失败原因
- */
+/** 推荐页（UI 优化版） */
 export default function LayoutRecommend (props) {
-  const { posts = [] } = props
+  // 允许 posts / allPages 兜底（别改）
+  const posts = (props?.posts && props.posts.length
+    ? props.posts
+    : (props?.allPages && props.allPages.length ? props.allPages : []))
 
-  // 统一把 recommend 取出来，并做标准化（=> string[]）
+  /** ------- 数据规范化 / 过滤 ------- */
+  // 标准化 recommend => string[]
   const normalizeRecommend = (p) => {
     let v = p?.recommend
-    if (!v && p?.ext && typeof p.ext === 'object') {
-      v = p.ext.recommend // 兼容有人把 recommend 放进 ext 的情况
-    }
+    if (!v && p?.ext && typeof p.ext === 'object') v = p.ext.recommend
     if (!v) return []
-
     if (Array.isArray(v)) return v.map(s => String(s).trim()).filter(Boolean)
     if (typeof v === 'string') {
-      // 兼容“标签1, 标签2”写法
-      if (v.includes(',')) return v.split(',').map(s => s.trim()).filter(Boolean)
-      return [v.trim()].filter(Boolean)
+      return v.split(',').map(s => s.trim()).filter(Boolean)
     }
-    // 其它类型（比如 boolean）直接忽略
     return []
   }
 
-  // 统计信息（用于诊断）
-  const stat = useMemo(() => {
-    let total = posts.length
-    let hasRecommend = 0
-    let wrongTypeOrStatus = 0
-    let ok = 0
-
-    posts.forEach(p => {
-      const list = normalizeRecommend(p)
-      const isPost = p?.type === 'Post'
-      const isPublish = p?.status === 'Published'
-      if (list.length > 0) hasRecommend++
-      if (list.length > 0 && (!isPost || !isPublish)) wrongTypeOrStatus++
-      if (list.length > 0 && isPost && isPublish) ok++
-    })
-
-    return { total, hasRecommend, wrongTypeOrStatus, ok }
+  const allPublishedPosts = useMemo(() => {
+    return (posts || []).filter(p => p?.type === 'Post' && p?.status === 'Published')
   }, [posts])
 
-  // 只要“已发布的博文 & 有 recommend”
   const recPosts = useMemo(() => {
-    return (posts || []).filter(p => {
-      const list = normalizeRecommend(p)
-      const isPost = p?.type === 'Post'
-      const isPublish = p?.status === 'Published'
-      return list.length > 0 && isPost && isPublish
-    })
-  }, [posts])
+    return allPublishedPosts.filter(p => normalizeRecommend(p).length > 0)
+  }, [allPublishedPosts])
 
-  // 收集所有推荐类别，生成 tabs
-  const tabs = useMemo(() => {
-    const s = new Set()
-    recPosts.forEach(p => normalizeRecommend(p).forEach(x => s.add(x)))
-    return Array.from(s)
+  // Tabs & 计数
+  const tabCounts = useMemo(() => {
+    const map = new Map()
+    recPosts.forEach(p => {
+      normalizeRecommend(p).forEach(t => map.set(t, (map.get(t) || 0) + 1))
+    })
+    return map
   }, [recPosts])
 
-  const [selected, setSelected] = useState(null) // null=全部
+  const tabs = useMemo(() => Array.from(tabCounts.keys()), [tabCounts])
+  const [selected, setSelected] = useState(null)      // 当前选中的推荐类别
+  const [q, setQ] = useState('')                      // 本地搜索
 
-  // 就地筛选（不跳转）
-  const list = useMemo(() => {
-    if (!selected) return recPosts
-    return recPosts.filter(p => normalizeRecommend(p).includes(selected))
-  }, [recPosts, selected])
+  const filtered = useMemo(() => {
+    let list = recPosts
+    if (selected) list = list.filter(p => normalizeRecommend(p).includes(selected))
+    if (q.trim()) {
+      const key = q.trim().toLowerCase()
+      list = list.filter(p => (p?.title || '').toLowerCase().includes(key))
+    }
+    return list
+  }, [recPosts, selected, q])
 
   const getDate = p =>
     p?.publishDay || p?.date?.start_date || p?.lastEditedDay || ''
 
-  return (
-    <div className='max-w-3xl mx-auto px-4 py-6'>
-      <h1 className='text-2xl font-semibold mb-3'>推荐文章</h1>
+  // 诊断条（需要时改成 false 关闭）
+  const SHOW_DIAG = false
+  const stat = {
+    total: posts.length,
+    hasRecommend: recPosts.length ? recPosts.length : 0,
+    ok: recPosts.length
+  }
 
-      {/* 诊断条：一眼看出问题在哪 */}
-      <div className='text-sm mb-4 rounded-md border px-3 py-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700 text-gray-600 dark:text-gray-300'>
-        <div>
-          全部文章：<b>{stat.total}</b>，
-          含 recommend：<b>{stat.hasRecommend}</b>，
-          其中非 Post/未 Published：<b>{stat.wrongTypeOrStatus}</b>，
+  /** ----------------- UI ----------------- */
+  return (
+    <div className='max-w-4xl mx-auto px-4 py-6'>
+      <h1 className='text-3xl font-extrabold tracking-tight mb-4'>推荐文章</h1>
+
+      {/* 顶部筛选条：吸附 + 卡片 + 毛玻璃 */}
+      <div className='sticky top-16 z-20 mb-6'>
+        <div className='backdrop-blur bg-white/70 dark:bg-black/40 border border-gray-200/60 dark:border-white/10 shadow-sm rounded-2xl px-4 py-3 flex flex-col gap-3'>
+          {/* 统计 + 搜索 */}
+          <div className='flex flex-col md:flex-row md:items-center gap-3'>
+            <div className='text-sm text-gray-600 dark:text-gray-300'>
+              共 <b>{allPublishedPosts.length}</b> 篇文章，
+              含 <code className='px-1 rounded bg-gray-100 dark:bg-white/10'>recommend</code>：
+              <b>{recPosts.length}</b>{selected ? `，当前「${selected}」：${filtered.length}` : ''}
+            </div>
+
+            <div className='grow' />
+
+            <div className='flex items-center gap-2'>
+              <input
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                placeholder='搜索标题...'
+                className='w-56 md:w-72 text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10'
+              />
+              {q && (
+                <button
+                  onClick={() => setQ('')}
+                  className='text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10'>
+                  清空
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className='flex flex-wrap gap-2'>
+            <button
+              onClick={() => setSelected(null)}
+              className={
+                'px-3 py-1.5 rounded-2xl border text-sm transition ' +
+                (!selected
+                  ? 'bg-black text-white dark:bg-white dark:text-black border-black/10 dark:border-white/10'
+                  : 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-white/10 hover:bg-gray-200/70 dark:hover:bg-white/20')
+              }>
+              全部
+              <span className='ml-2 text-xs opacity-80'>{recPosts.length}</span>
+            </button>
+
+            {tabs.map(t => {
+              const active = selected === t
+              const count = tabCounts.get(t) || 0
+              return (
+                <button
+                  key={t}
+                  onClick={() => setSelected(t)}
+                  title={t}
+                  className={
+                    'px-3 py-1.5 rounded-2xl border text-sm transition ' +
+                    (active
+                      ? 'bg-black text-white dark:bg-white dark:text-black border-black/10 dark:border-white/10'
+                      : 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-white/10 hover:bg-gray-200/70 dark:hover:bg-white/20')
+                  }>
+                  {t}
+                  <span className='ml-2 text-xs opacity-80'>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {SHOW_DIAG && (
+        <div className='text-xs mb-4 rounded-md border px-3 py-2 bg-gray-50 dark:bg-gray-800 dark:border-white/10 text-gray-600 dark:text-gray-300'>
+          全部文章：<b>{stat.total}</b>，含 recommend：<b>{stat.hasRecommend}</b>，
           最终可展示：<b>{stat.ok}</b>
         </div>
-        {stat.hasRecommend === 0 && (
-          <div className='mt-1'>
-            🔎 没检测到任何 <code>recommend</code>。请确认：
-            ① Notion 列名确实叫 <code>recommend</code>；
-            ② 至少给一篇文章填了这个列；
-            ③ 若填在 <code>ext</code> 里，请把 key 也叫 <code>recommend</code>。
+      )}
+
+      {/* 列表 */}
+      <div className='rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden'>
+        {filtered.length === 0 && (
+          <div className='py-16 text-center text-sm text-gray-500 dark:text-gray-400'>
+            暂无匹配的推荐文章
           </div>
         )}
-        {stat.hasRecommend > 0 && stat.ok === 0 && (
-          <div className='mt-1'>
-            ⚠️ 检测到 recommend，但都被类型/状态过滤。
-            需要文章满足 <code>type === 'Post'</code> 且 <code>status === 'Published'</code>。
-            （若要放开 Page，请把代码里 <code>isPost</code> 改成 <code>['Post','Page'].includes(p?.type)</code>）
-          </div>
-        )}
+
+        <ul className='divide-y divide-gray-200/70 dark:divide-white/10'>
+          {filtered.map(p => (
+            <li key={p.id}>
+              <a
+                href={p?.slug ? `/${p.slug}` : `/post/${p.id}`}
+                className='group flex items-center justify-between px-5 py-4 md:px-6 md:py-5 hover:bg-gray-50 dark:hover:bg-white/5 transition'>
+                <div className='min-w-0 pr-4'>
+                  <div className='text-lg md:text-xl font-medium text-blue-600 dark:text-blue-400 group-hover:underline line-clamp-2'>
+                    {p.title}
+                  </div>
+                </div>
+                <div className='shrink-0 text-sm tabular-nums text-gray-500 dark:text-gray-400'>
+                  {getDate(p)}
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
       </div>
-
-      {/* 顶部推荐类别（不跳转按钮） */}
-      <div className='flex flex-wrap gap-2 mb-4'>
-        <button
-          onClick={() => setSelected(null)}
-          className={`px-3 py-1 rounded-2xl border text-sm ${
-            !selected
-              ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-black'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-200'
-          }`}
-        >
-          全部
-        </button>
-        {tabs.map(t => (
-          <button
-            key={t}
-            onClick={() => setSelected(t)}
-            className={`px-3 py-1 rounded-2xl border text-sm ${
-              selected === t
-                ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-black'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-200'
-            }`}
-            title={t}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* 列表：标题 + 时间 */}
-      <ul className='divide-y divide-gray-200 dark:divide-gray-700'>
-        {list.map(p => (
-          <li key={p.id} className='py-2 flex justify-between'>
-            <a
-              href={p?.slug ? `/${p.slug}` : `/post/${p.id}`}
-              className='text-blue-600 hover:underline dark:text-blue-400'
-            >
-              {p.title}
-            </a>
-            <span className='text-sm text-gray-500 dark:text-gray-400 ml-4 whitespace-nowrap'>
-              {getDate(p)}
-            </span>
-          </li>
-        ))}
-
-        {list.length === 0 && (
-          <li className='py-10 text-center text-sm text-gray-500 dark:text-gray-400'>
-            暂无推荐文章
-          </li>
-        )}
-      </ul>
     </div>
   )
 }
