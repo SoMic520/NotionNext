@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 
-/** 推荐页（卡片风格 + 交互优化） */
 export default function LayoutRecommend (props) {
-  // 数据源兜底：posts 优先，其次 allPages
   const posts = (props?.posts && props.posts.length
     ? props.posts
     : (props?.allPages && props.allPages.length ? props.allPages : []))
 
-  /** ---------- 数据规范化 / 过滤 ---------- */
-  // 标准化 recommend => string[]
   const normRec = (p) => {
     let v = p?.recommend
     if (!v && p?.ext && typeof p.ext === 'object') v = p.ext.recommend
@@ -27,7 +23,6 @@ export default function LayoutRecommend (props) {
     [allPublished]
   )
 
-  // Tabs & 计数
   const tabCounts = useMemo(() => {
     const map = new Map()
     recPosts.forEach(p => normRec(p).forEach(t => map.set(t, (map.get(t) || 0) + 1)))
@@ -35,11 +30,9 @@ export default function LayoutRecommend (props) {
   }, [recPosts])
   const tabs = useMemo(() => Array.from(tabCounts.keys()), [tabCounts])
 
-  /** ---------- 选中/搜索：持久化 + URL 同步 ---------- */
   const url = typeof window !== 'undefined' ? new URL(window.location.href) : null
   const initSelected = url?.searchParams.get('r') || (typeof window !== 'undefined' ? localStorage.getItem('__rec_tab__') : null) || null
   const initQ = url?.searchParams.get('q') || (typeof window !== 'undefined' ? localStorage.getItem('__rec_q__') : '') || ''
-
   const [selected, setSelected] = useState(initSelected)
   const [q, setQ] = useState(initQ)
 
@@ -54,7 +47,6 @@ export default function LayoutRecommend (props) {
     localStorage.setItem('__rec_q__', q || '')
   }, [selected, q])
 
-  // 结果集
   const filtered = useMemo(() => {
     let list = recPosts
     if (selected) list = list.filter(p => normRec(p).includes(selected))
@@ -72,57 +64,49 @@ export default function LayoutRecommend (props) {
     return s.length > 120 ? `${s.slice(0, 118)}…` : s
   }
 
-  /** ---------- UI ---------- */
-  const hasActiveFilter = Boolean(selected) || Boolean(q.trim())
-
-  // 你不喜欢蓝色，这里用「墨色 + 悬停变绿」；想换色改这两个变量即可
-  const titleBase = 'text-lg md:text-xl font-medium text-slate-800 dark:text-slate-100'
-  const titleHover = 'group-hover:scale-[1.02] group-hover:text-emerald-600 dark:group-hover:text-emerald-400'
+  // 标题样式：默认更小，悬停放大+变色（避免刺眼蓝，改用墨绿）
+  const titleBase = 'text-base md:text-lg font-semibold text-slate-800 dark:text-slate-100'
+  const titleHover = 'group-hover:text-emerald-600 dark:group-hover:text-emerald-400 group-hover:scale-[1.03]'
 
   return (
     <div className='max-w-5xl mx-auto px-4 py-6'>
-      <h1 className='text-3xl md:text-4xl font-extrabold tracking-tight mb-4'>
+      {/* 往下一点：加了 mt-3 */}
+      <h1 className='mt-3 text-3xl md:text-4xl font-extrabold tracking-tight mb-4'>
         推荐文章
       </h1>
 
-      {/* 顶部状态/筛选条 */}
+      {/* 顶部工具条：统计在左，搜索在右（同一行） */}
       <div className='sticky top-16 z-20 mb-6'>
-        <div className='rounded-2xl border border-gray-200/70 dark:border-white/10 bg-gradient-to-b from-white/85 to-white/60 dark:from-black/50 dark:to-black/30 backdrop-blur shadow-sm px-4 py-3 flex flex-col gap-3'>
-          {/* 统计 + 清空 */}
-          <div className='flex flex-col md:flex-row md:items-center gap-3'>
+        <div className='rounded-2xl border border-gray-200/70 dark:border-white/10 bg-gradient-to-b from-white/85 to-white/60 dark:from-black/50 dark:to-black/30 backdrop-blur shadow-sm px-4 py-3'>
+          <div className='flex items-center gap-3'>
             <div className='text-sm text-gray-600 dark:text-gray-300'>
               共 <b>{allPublished.length}</b> 篇文章
               {selected ? <>，当前「{selected}」：<b>{filtered.length}</b></> : null}
               {q?.trim() ? <>，搜索：<b>{q.trim()}</b></> : null}
             </div>
 
-            <div className='grow' />
-
-            {hasActiveFilter && (
-              <button
-                onClick={() => { setSelected(null); setQ('') }}
-                className='text-xs md:text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 transition'>
-                <i className='fas fa-rotate-left mr-1.5' />
-                清空筛选
-              </button>
-            )}
-          </div>
-
-          {/* 搜索框 */}
-          <div className='flex items-center gap-2'>
-            <div className='relative'>
-              <i className='fas fa-magnifying-glass absolute left-3 top-2.5 text-gray-400 dark:text-gray-500 text-sm' />
-              <input
-                value={q}
-                onChange={e => setQ(e.target.value)}
-                placeholder='搜索标题…'
-                className='w-64 md:w-80 pl-9 pr-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10'
-              />
+            <div className='ml-auto flex items-center gap-2'>
+              <div className='relative'>
+                <i className='fas fa-magnifying-glass absolute left-3 top-2.5 text-gray-400 dark:text-gray-500 text-sm' />
+                <input
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  placeholder='搜索标题…'
+                  className='w-56 md:w-72 pl-9 pr-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black outline-none focus:ring-2 focus:ring-emerald-500/20 dark:focus:ring-emerald-400/20'
+                />
+              </div>
+              {(selected || q.trim()) && (
+                <button
+                  onClick={() => { setSelected(null); setQ('') }}
+                  className='text-xs md:text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 transition'>
+                  清空
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className='flex flex-wrap gap-2'>
+          {/* Tabs 行 */}
+          <div className='mt-3 flex flex-wrap gap-2'>
             <button
               onClick={() => setSelected(null)}
               className={
@@ -158,7 +142,7 @@ export default function LayoutRecommend (props) {
         </div>
       </div>
 
-      {/* 卡片列表 */}
+      {/* 卡片列表：加入强烈 hover 动效 */}
       <div className='grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5'>
         {filtered.length === 0 && (
           <div className='col-span-full py-16 text-center text-sm text-gray-500 dark:text-gray-400 rounded-2xl border border-dashed border-gray-300 dark:border-white/10'>
@@ -172,9 +156,16 @@ export default function LayoutRecommend (props) {
             <a
               key={p.id}
               href={p?.slug ? `/${p.slug}` : `/post/${p.id}`}
-              className='group rounded-2xl border border-gray-200 dark:border-white/10 bg-white/70 dark:bg-white/[0.04] hover:bg-white/90 dark:hover:bg-white/[0.06] shadow-sm hover:shadow-md transition overflow-hidden'>
+              className={
+                'group rounded-2xl border border-gray-200 dark:border-white/10 ' +
+                'bg-white/80 dark:bg-white/[0.04] shadow-sm transition ' +
+                // 边框/描边/背景/放大/阴影：悬停有明显反馈
+                'hover:border-emerald-400/60 hover:shadow-lg hover:bg-white ' +
+                'dark:hover:bg-white/[0.06] hover:ring-1 hover:ring-emerald-400/40 ' +
+                'active:scale-[0.99] will-change-transform'
+              }>
               <div className='p-4 md:p-5 flex flex-col h-full'>
-                {/* 标题 */}
+                {/* 标题：更小 + 悬停放大变色 */}
                 <div className={`${titleBase} transform transition ${titleHover}`}>
                   {p.title}
                 </div>
