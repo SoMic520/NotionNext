@@ -57,13 +57,13 @@ const LayoutBase = props => {
 
   const headerSlot = post ? (
     <PostHero {...props} />
-  ) : router.route === '/' &&
-    siteConfig('HEXO_HOME_BANNER_ENABLE', null, CONFIG) ? (
+  ) : router。route === '/' &&
+    siteConfig('HEXO_HOME_BANNER_ENABLE'， null， CONFIG) ? (
     <Hero {...props} />
   ) : null
 
   const drawerRight = useRef(null)
-  const tocRef = isBrowser ? document.getElementById('article-wrapper') : null
+  const tocRef = isBrowser ? document。getElementById('article-wrapper') : null
 
   // 悬浮按钮内容
   const floatSlot = (
@@ -86,7 +86,7 @@ const LayoutBase = props => {
   const searchModal = useRef(null)
 
   return (
-    <ThemeGlobalHexo.Provider value={{ searchModal }}>
+    <ThemeGlobalHexo。Provider value={{ searchModal }}>
       <div
         id='theme-hexo'
         className={`${siteConfig('FONT_STYLE')} dark:bg-black scroll-smooth`}>
@@ -112,11 +112,11 @@ const LayoutBase = props => {
         {/* 主区块 */}
         <main
           id='wrapper'
-          className={`${siteConfig('HEXO_HOME_BANNER_ENABLE', null, CONFIG) ? '' : 'pt-16'} bg-hexo-background-gray dark:bg-black w-full py-8 md:px-8 lg:px-24 min-h-screen relative`}>
+          className={`${siteConfig('HEXO_HOME_BANNER_ENABLE'， null, CONFIG) ? '' : 'pt-16'} bg-hexo-background-gray dark:bg-black w-full py-8 md:px-8 lg:px-24 min-h-screen relative`}>
           <div
             id='container-inner'
             className={
-              (JSON.parse(siteConfig('LAYOUT_SIDEBAR_REVERSE'))
+              (JSON。parse(siteConfig('LAYOUT_SIDEBAR_REVERSE'))
                 ? 'flex-row-reverse'
                 : '') +
               ' w-full mx-auto lg:flex lg:space-x-4 justify-center relative z-10'
@@ -314,7 +314,7 @@ const LayoutSlug = props => {
 
             {/* 评论互动 */}
             <div className='duration-200 overflow-x-auto bg-white dark:bg-hexo-black-gray px-3'>
-              <Comment frontMatter={post} />
+              <评论 frontMatter={post} />
             </div>
           </div>
         )}
@@ -337,7 +337,7 @@ const Layout404 = props => {
       if (isBrowser) {
         const article = document.querySelector('#article-wrapper #notion-article')
         if (!article) {
-          router.push('/').then(() => {
+          router。push('/')。键，然后(() => {
             // console.log('找不到页面', router.asPath)
           })
         }
@@ -378,8 +378,8 @@ const LayoutCategoryIndex = props => {
           {categoryOptions?.map(category => {
             return (
               <SmartLink
-                key={category.name}
-                href={`/category/${category.name}`}
+                key={category。name}
+                href={`/category/${category。name}`}
                 passHref
                 legacyBehavior>
                 <div
@@ -437,6 +437,6 @@ export {
   LayoutSearch,
   LayoutSlug,
   LayoutTagIndex,
-  LayoutRecommend，
+  LayoutRecommend,
   CONFIG as THEME_CONFIG
 }
