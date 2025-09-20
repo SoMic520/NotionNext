@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 
+/** 推荐页（卡片风格 + 交互优化 + 搜索右侧间距增强） */
 export default function LayoutRecommend (props) {
+  // 数据源兜底：posts 优先，其次 allPages
   const posts = (props?.posts && props.posts.length
     ? props.posts
     : (props?.allPages && props.allPages.length ? props.allPages : []))
 
+  /** ---------- 数据规范化 / 过滤 ---------- */
+  // 标准化 recommend => string[]
   const normRec = (p) => {
     let v = p?.recommend
     if (!v && p?.ext && typeof p.ext === 'object') v = p.ext.recommend
@@ -23,6 +27,7 @@ export default function LayoutRecommend (props) {
     [allPublished]
   )
 
+  // Tabs & 计数
   const tabCounts = useMemo(() => {
     const map = new Map()
     recPosts.forEach(p => normRec(p).forEach(t => map.set(t, (map.get(t) || 0) + 1)))
@@ -30,9 +35,11 @@ export default function LayoutRecommend (props) {
   }, [recPosts])
   const tabs = useMemo(() => Array.from(tabCounts.keys()), [tabCounts])
 
+  /** ---------- 选中/搜索：持久化 + URL 同步 ---------- */
   const url = typeof window !== 'undefined' ? new URL(window.location.href) : null
   const initSelected = url?.searchParams.get('r') || (typeof window !== 'undefined' ? localStorage.getItem('__rec_tab__') : null) || null
   const initQ = url?.searchParams.get('q') || (typeof window !== 'undefined' ? localStorage.getItem('__rec_q__') : '') || ''
+
   const [selected, setSelected] = useState(initSelected)
   const [q, setQ] = useState(initQ)
 
@@ -47,6 +54,7 @@ export default function LayoutRecommend (props) {
     localStorage.setItem('__rec_q__', q || '')
   }, [selected, q])
 
+  // 结果集
   const filtered = useMemo(() => {
     let list = recPosts
     if (selected) list = list.filter(p => normRec(p).includes(selected))
@@ -64,29 +72,32 @@ export default function LayoutRecommend (props) {
     return s.length > 120 ? `${s.slice(0, 118)}…` : s
   }
 
+  /** ---------- UI ---------- */
+  const hasActiveFilter = Boolean(selected) || Boolean(q.trim())
+
   // 标题样式：默认更小，悬停放大+变色（避免刺眼蓝，改用墨绿）
   const titleBase = 'text-base md:text-lg font-semibold text-slate-800 dark:text-slate-100'
   const titleHover = 'group-hover:text-emerald-600 dark:group-hover:text-emerald-400 group-hover:scale-[1.03]'
 
   return (
     <div className='max-w-5xl mx-auto px-4 py-6'>
-      {/* 往下一点：加了 mt-3 */}
+      {/* 往下一点：加 mt-3 */}
       <h1 className='mt-3 text-3xl md:text-4xl font-extrabold tracking-tight mb-4'>
         推荐文章
       </h1>
 
-      {/* 顶部工具条：统计在左，搜索在右（同一行） */}
+      {/* 顶部工具条：统计在左，搜索在右（同一行），增强间距 */}
       <div className='sticky top-16 z-20 mb-6'>
         <div className='rounded-2xl border border-gray-200/70 dark:border-white/10 bg-gradient-to-b from-white/85 to-white/60 dark:from-black/50 dark:to-black/30 backdrop-blur shadow-sm px-4 py-3'>
-          <div className='flex items-center gap-3'>
+          <div className='flex items-center'>
             <div className='text-sm text-gray-600 dark:text-gray-300'>
               共 <b>{allPublished.length}</b> 篇文章
               {selected ? <>，当前「{selected}」：<b>{filtered.length}</b></> : null}
               {q?.trim() ? <>，搜索：<b>{q.trim()}</b></> : null}
             </div>
 
-            <div className='ml-auto flex items-center gap-2'>
-              <div className='relative'>
+            <div className='ml-auto flex items-center gap-2 md:gap-3 lg:gap-5'>
+              <div className='relative ml-2 md:ml-4'>
                 <i className='fas fa-magnifying-glass absolute left-3 top-2.5 text-gray-400 dark:text-gray-500 text-sm' />
                 <input
                   value={q}
@@ -142,7 +153,7 @@ export default function LayoutRecommend (props) {
         </div>
       </div>
 
-      {/* 卡片列表：加入强烈 hover 动效 */}
+      {/* 卡片列表：强 hover 动效 */}
       <div className='grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5'>
         {filtered.length === 0 && (
           <div className='col-span-full py-16 text-center text-sm text-gray-500 dark:text-gray-400 rounded-2xl border border-dashed border-gray-300 dark:border-white/10'>
@@ -159,7 +170,6 @@ export default function LayoutRecommend (props) {
               className={
                 'group rounded-2xl border border-gray-200 dark:border-white/10 ' +
                 'bg-white/80 dark:bg-white/[0.04] shadow-sm transition ' +
-                // 边框/描边/背景/放大/阴影：悬停有明显反馈
                 'hover:border-emerald-400/60 hover:shadow-lg hover:bg-white ' +
                 'dark:hover:bg-white/[0.06] hover:ring-1 hover:ring-emerald-400/40 ' +
                 'active:scale-[0.99] will-change-transform'
