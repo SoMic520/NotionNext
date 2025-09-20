@@ -378,15 +378,15 @@ const LayoutCategoryIndex = props => {
           {categoryOptions?.map(category => {
             return (
               <SmartLink
-                key={category.name}
-                href={`/category/${category.name}`}
+                key={category。name}
+                href={`/category/${category。name}`}
                 passHref
                 legacyBehavior>
                 <div
                   className={
                     ' duration-300 dark:hover:text-white px-5 cursor-pointer py-2 hover:text-indigo-400'
                   }>
-                  <i className='mr-4 fas fa-folder' /> {category.name}(
+                  <i className='mr-4 fas fa-folder' /> {category。name}(
                   {category.count})
                 </div>
               </SmartLink>
@@ -410,7 +410,7 @@ const LayoutTagIndex = props => {
     <div className='mt-8'>
       <Card className='w-full'>
         <div className='dark:text-gray-200 mb-5 ml-4'>
-          <i className='mr-4 fas fa-tag' /> {locale.COMMON.TAGS}:
+          <i className='mr-4 fas fa-tag' /> {locale。COMMON.TAGS}:
         </div>
         <div id='tags-list' className='duration-200 flex flex-wrap ml-8'>
           {tagOptions.map(tag => (
@@ -424,6 +424,9 @@ const LayoutTagIndex = props => {
   )
 }
 
+import { Style } from './style'
++import LayoutRecommend from './layouts/LayoutRecommend'   // ✅ 新增
+
 export {
   Layout404,
   LayoutArchive,
@@ -433,6 +436,8 @@ export {
   LayoutPostList,
   LayoutSearch,
   LayoutSlug,
-  LayoutTagIndex,
+  LayoutTagIndex，
++  LayoutRecommend,   // ✅ 新增
   CONFIG as THEME_CONFIG
 }
+
