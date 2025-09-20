@@ -299,24 +299,19 @@ img {
   0% {background-position: right}
 }
 
-/* === 仅文章正文中的 Notion 表格居中 === */
-
-/* 简单表格（Simple Table） */
-.post-content .notion .notion-simple-table th,
-.post-content .notion .notion-simple-table td {
-  text-align: center;
-  vertical-align: middle;
+/* 仅正文(main)里的 Notion 表格居中；加 !important 提升权重 */
+main .notion .notion-simple-table th,
+main .notion .notion-simple-table td,
+main .notion .notion-collection-table table th,
+main .notion .notion-collection-table table td,
+main .notion table.notion-table th,
+main .notion table.notion-table td {
+  text-align: center !important;
+  vertical-align: middle !important;
 }
 
-/* 数据库表格视图（Collection Table / Table View） */
-.post-content .notion .notion-collection-table table th,
-.post-content .notion .notion-collection-table table td {
-  text-align: center;
-  vertical-align: middle;
-}
-
-/* 排除代码块（保持左对齐） */
-.post-content .notion .notion-code,
-.post-content .notion .notion-code * {
+/* 保持代码块左对齐 */
+main .notion .notion-code,
+main .notion .notion-code * {
   text-align: left !important;
 }
