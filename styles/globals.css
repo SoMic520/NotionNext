@@ -298,3 +298,25 @@ img {
   @keyframes l1 {
   0% {background-position: right}
 }
+
+/* === 仅文章正文中的 Notion 表格居中 === */
+
+/* 简单表格（Simple Table） */
+.post-content .notion .notion-simple-table th,
+.post-content .notion .notion-simple-table td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* 数据库表格视图（Collection Table / Table View） */
+.post-content .notion .notion-collection-table table th,
+.post-content .notion .notion-collection-table table td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* 排除代码块（保持左对齐） */
+.post-content .notion .notion-code,
+.post-content .notion .notion-code * {
+  text-align: left !important;
+}
