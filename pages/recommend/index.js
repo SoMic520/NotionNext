@@ -17,14 +17,12 @@ export default function Recommend (props) {
 export async function getStaticProps({ locale }) {
   const props = await getGlobalData({ from: 'Recommend', locale })
 
-  // ✅ 关键兜底：若 posts 为空，则从 allPages 里筛出已发布的博文作为 posts
-  if (!props.posts?.length && Array.isArray(props.allPages)) {
-    props。posts = props.allPages.filter(p => p?.type === 'Post' && p?.status === 'Published')
+  // ✅ 兜底：如果 posts 为空，就从 allPages 抽出已发布的博文
+  if ((!props.posts || props.posts.length === 0) && Array.isArray(props.allPages)) {
+    props.posts = props.allPages.filter(p => p?.type === 'Post' && p?.status === 'Published')
   }
 
-  // 可选：如果你之前写过 delete props.allPages，请删掉那行，避免上面兜底失效
-  // delete props.allPages  ← 不要这行！
-
+  // 千万不要在这里 delete props.allPages；让它保留给前端做更多兜底用
   return {
     props,
     revalidate: process.env.EXPORT
