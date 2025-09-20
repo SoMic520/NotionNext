@@ -34,6 +34,9 @@ import TocDrawerButton from './components/TocDrawerButton'
 import CONFIG from './config'
 import { Style } from './style'
 
+// ✅ 新增：引入推荐页布局（你已在 themes/hexo/layouts/LayoutRecommend.jsx 创建）
+import LayoutRecommend from './layouts/LayoutRecommend'
+
 const AlgoliaSearchModal = dynamic(
   () => import('@/components/AlgoliaSearchModal'),
   { ssr: false }
@@ -44,7 +47,7 @@ const ThemeGlobalHexo = createContext()
 export const useHexoGlobal = () => useContext(ThemeGlobalHexo)
 
 /**
- * 基础布局 采用左右两侧布局，移动端使用顶部导航栏
+ * 基础布局 采用左右两侧布局, 移动端使用顶部导航栏
  * @param props
  * @returns {JSX.Element}
  * @constructor
@@ -58,7 +61,7 @@ const LayoutBase = props => {
   const headerSlot = post ? (
     <PostHero {...props} />
   ) : router.route === '/' &&
-    siteConfig('HEXO_HOME_BANNER_ENABLE'， null, CONFIG) ? (
+    siteConfig('HEXO_HOME_BANNER_ENABLE', null, CONFIG) ? (
     <Hero {...props} />
   ) : null
 
@@ -164,7 +167,7 @@ const LayoutBase = props => {
 
 /**
  * 首页
- * 是一个博客列表,嵌入一个Hero大图
+ * 是一个博客列表, 嵌入一个Hero大图
  * @param {*} props
  * @returns
  */
@@ -219,12 +222,11 @@ const LayoutSearch = props => {
         <SearchNav {...props} />
       ) : (
         <div id='posts-wrapper'>
-          {' '}
           {siteConfig('POST_LIST_STYLE') === 'page' ? (
             <BlogPostListPage {...props} />
           ) : (
             <BlogPostListScroll {...props} />
-          )}{' '}
+          )}
         </div>
       )}
     </div>
@@ -264,24 +266,23 @@ const LayoutSlug = props => {
   const { post, lock, validPassword } = props
   const router = useRouter()
   const waiting404 = siteConfig('POST_WAITING_TIME_FOR_404') * 1000
+
   useEffect(() => {
     // 404
     if (!post) {
-      setTimeout(
-        () => {
-          if (isBrowser) {
-            const article = document.querySelector('#article-wrapper #notion-article')
-            if (!article) {
-              router.push('/404').then(() => {
-                console.warn('找不到页面', router.asPath)
-              })
-            }
+      setTimeout(() => {
+        if (isBrowser) {
+          const article = document.querySelector('#article-wrapper #notion-article')
+          if (!article) {
+            router.push('/404').then(() => {
+              console.warn('找不到页面', router.asPath)
+            })
           }
-        },
-        waiting404
-      )
+        }
+      }, waiting404)
     }
   }, [post])
+
   return (
     <>
       <div className='w-full lg:hover:shadow lg:border rounded-t-xl lg:rounded-xl lg:px-2 lg:py-4 bg-white dark:bg-hexo-black-gray dark:border-black article'>
@@ -310,11 +311,11 @@ const LayoutSlug = props => {
               )}
             </article>
 
-            <div className='pt-4 border-dashed'></div>
+            <div className='pt-4 border-dashed' />
 
             {/* 评论互动 */}
             <div className='duration-200 overflow-x-auto bg-white dark:bg-hexo-black-gray px-3'>
-              <评论 frontMatter={post} />
+              <Comment frontMatter={post} />
             </div>
           </div>
         )}
@@ -337,7 +338,7 @@ const Layout404 = props => {
       if (isBrowser) {
         const article = document.querySelector('#article-wrapper #notion-article')
         if (!article) {
-          router.push('/').键,然后(() => {
+          router.push('/').then(() => {
             // console.log('找不到页面', router.asPath)
           })
         }
@@ -424,9 +425,6 @@ const LayoutTagIndex = props => {
   )
 }
 
-import { Style } from './style'
-import LayoutRecommend from './layouts/LayoutRecommend'   // 新增的布局
-
 export {
   Layout404,
   LayoutArchive,
@@ -437,6 +435,6 @@ export {
   LayoutSearch,
   LayoutSlug,
   LayoutTagIndex,
-  LayoutRecommend,
+  LayoutRecommend, // ✅ 新增导出
   CONFIG as THEME_CONFIG
 }
