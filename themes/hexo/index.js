@@ -425,7 +425,7 @@ const LayoutTagIndex = props => {
 }
 
 import { Style } from './style'
-+import LayoutRecommend from './layouts/LayoutRecommend'   // ✅ 新增
+import LayoutRecommend from './layouts/LayoutRecommend'   // 新增的布局
 
 export {
   Layout404,
@@ -436,8 +436,7 @@ export {
   LayoutPostList,
   LayoutSearch,
   LayoutSlug,
-  LayoutTagIndex，
-+  LayoutRecommend,   // ✅ 新增
+  LayoutTagIndex,
+  LayoutRecommend，
   CONFIG as THEME_CONFIG
 }
-
