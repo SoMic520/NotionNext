@@ -1,17 +1,17 @@
-// /pages/links.js   （src 结构就放 /src/pages/links.js）
-import { getLinksAndCategories } from '../notion/links'
+// /pages/links.js  （若用 src 结构就放 /src/pages/links.js）
+import { getLinksAndCategories } from '@/lib/links' // 如果你放在 /lib/notion/links.js 就写 '@/lib/notion/links'
 
 export async function getStaticProps() {
-  try{
+  try {
     const r = await getLinksAndCategories()
-    return { props: { data: r.items, categories: r.categories, ok:true }, revalidate: 3600 }
-  }catch(e){
-    return { props: { data: [], categories: [], ok:false, err: String(e?.message || e) }, revalidate: 300 }
+    return { props: { data: r.items, categories: r.categories, ok: true }, revalidate: 3600 }
+  } catch (e) {
+    return { props: { data: [], categories: [], ok: false, err: String(e?.message || e) }, revalidate: 300 }
   }
 }
 
 export default function Links({ data=[], categories=[], ok, err }) {
-  const groups = categories.map(cat=>({
+  const groups = categories.map(cat => ({
     cat,
     items: data
       .filter(x => (cat==='未分类' ? !x.Categories?.length : x.Categories?.includes(cat)))
@@ -21,8 +21,6 @@ export default function Links({ data=[], categories=[], ok, err }) {
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       <h1 className="text-2xl font-bold mb-3">友情链接</h1>
-      <p className="text-sm opacity-70 mb-6">学术 / 教育 / 科研相关；提交：站点名 / 链接 / 简介 / 图标 / 分类。</p>
-
       {!ok && (
         <div className="mb-6 text-sm p-3 rounded-lg border">
           <div className="font-medium">未能读取 Notion 数据</div>
@@ -30,39 +28,39 @@ export default function Links({ data=[], categories=[], ok, err }) {
         </div>
       )}
 
-      <div className="grid gap-10">
-        {groups.map(({cat,items})=>(
-          <section key={cat}>
-            <h2 className="text-xl font-semibold mb-4">{cat}</h2>
-            {items.length===0 ? (
-              <div className="text-sm opacity-60">此分类暂无条目</div>
-            ) : (
-              <ul className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                {items.map(it=>(
-                  <li key={it.URL} className="border rounded-2xl p-4 hover:shadow transition">
-                    <a href={it.URL} target="_blank" rel="noreferrer" className="flex items-center gap-3 no-underline">
-                      <img
-                        src={it.Avatar || '/favicon.ico'}
-                        alt={it.Name}
-                        className="w-10 h-10 rounded-lg object-cover"
-                        onError={e=>{ e.currentTarget.src='/favicon.ico' }}
-                      />
-                      <div>
-                        <div className="font-medium">{it.Name}</div>
-                        <div className="text-xs opacity-70 mt-1 line-clamp-2">{it.Description}</div>
-                      </div>
-                    </a>
-                    <div className="mt-3 text-xs opacity-60 flex items-center justify-between">
-                      <span>{(it.Language||'').toUpperCase()}</span>
-                      {it.RSS ? <a className="underline" href={it.RSS} target="_blank" rel="noreferrer">RSS</a> : <span>&nbsp;</span>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ))}
-      </div>
+      {data.length === 0 ? (
+        <div className="text-sm opacity-70">暂无数据。请确认数据库里至少有一条记录，且字段名包含 Name/URL/Category。</div>
+      ) : (
+        <div className="grid gap-10">
+          {groups.map(({cat,items})=>(
+            <section key={cat}>
+              <h2 className="text-xl font-semibold mb-4">{cat}</h2>
+              {items.length===0 ? (
+                <div className="text-sm opacity-60">此分类暂为空</div>
+              ) : (
+                <ul className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {items.map(it=>(
+                    <li key={it.URL} className="border rounded-2xl p-4 hover:shadow transition">
+                      <a href={it.URL} target="_blank" rel="noreferrer" className="flex items-center gap-3 no-underline">
+                        <img
+                          src={it.Avatar || '/favicon.ico'}
+                          alt={it.Name}
+                          className="w-10 h-10 rounded-lg object-cover"
+                          onError={e=>{ e.currentTarget.src='/favicon.ico' }}
+                        />
+                        <div>
+                          <div className="font-medium">{it.Name}</div>
+                          <div className="text-xs opacity-70 mt-1 line-clamp-2">{it.Description}</div>
+                        </div>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
