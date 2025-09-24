@@ -1,4 +1,4 @@
-// /pages/links.js   （src 结构就放 /src/pages/links.js）
+// /pages/links.js   （若用 src 结构放 /src/pages/links.js）
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
@@ -9,11 +9,7 @@ function LinksBody({ data = [], categories = [] }) {
   const groups = (categories || []).map(cat => ({
     cat,
     items: (data || [])
-      .filter(x =>
-        cat === '未分类'
-          ? !x.Categories?.length
-          : x.Categories?.includes(cat)
-      )
+      .filter(x => (cat === '未分类' ? !x.Categories?.length : x.Categories?.includes(cat)))
       .sort((a, b) => (b.Weight || 0) - (a.Weight || 0) || a.Name.localeCompare(b.Name))
   }))
 
@@ -35,6 +31,7 @@ function LinksBody({ data = [], categories = [] }) {
                       target="_blank"
                       rel="noopener noreferrer nofollow external"
                       className="flex items-center gap-3 no-underline"
+                      onClick={e => e.stopPropagation()} // 防主题代理拦截
                     >
                       <img
                         src={it.Avatar}
@@ -67,26 +64,37 @@ function LinksBody({ data = [], categories = [] }) {
 
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
-  // 用 LayoutIndex，不去渲染 Notion 正文；children 即为页面主体
-  return (
-    <DynamicLayout theme={theme} layoutName="LayoutIndex" {...props}>
-      <LinksBody data={props.items} categories={props.categories} />
-    </DynamicLayout>
-  )
+
+  // 有 slug=links 的 Notion 占位页 → 用 LayoutSlug（保留侧栏、页脚）并把自定义内容作为 children
+  if (props.__hasSlug) {
+    return (
+      <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
+        <LinksBody data={props.items} categories={props.categories} />
+      </DynamicLayout>
+    )
+  }
+
+  // 没有占位页 → 直接渲染自定义内容（避免 LayoutIndex 显示“没有更多了”）
+  return <LinksBody data={props.items} categories={props.categories} />
 }
 
-// ✅ 改为 SSR，规避免 build 的 “page wasn’t built”，并确保环境变量在服务端可用
+// 用 SSR，避免构建期预渲染失败
 export async function getServerSideProps({ locale }) {
   let base = {}
   let items = []
   let categories = []
-  let err = null
+  let hasSlug = false
 
   try {
     base = await getGlobalData({ from: 'links', locale })
+    const pages = base?.allPages || base?.pages || []
+    hasSlug = Array.isArray(pages) && pages.some(p =>
+      (p?.slug === 'links' || p?.slug?.value === 'links') &&
+      (p?.type === 'Page' || p?.type?.value === 'Page') &&
+      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
+    )
   } catch (e) {
-    // 不中断，保证页面可渲染
-    err = `getGlobalData: ${e?.message || e}`
+    console.error('getGlobalData:', e?.message || e)
     base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
   }
 
@@ -95,10 +103,10 @@ export async function getServerSideProps({ locale }) {
     items = r?.items || []
     categories = r?.categories || []
   } catch (e) {
-    err = `getLinksAndCategories: ${e?.message || e}`
+    console.error('getLinksAndCategories:', e?.message || e)
     items = []
     categories = []
   }
 
-  return { props: { ...base, items, categories, __err: err } }
+  return { props: { ...base, items, categories, __hasSlug: hasSlug } }
 }
