@@ -1,10 +1,11 @@
+// /pages/links.js  （src 结构就放 /src/pages/links.js）
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
 import { getLinksAndCategories } from '@/lib/links'
 
-function LinksSlot({ data = [], categories = [] }) {
+function LinksBody({ data = [], categories = [] }) {
   const groups = categories.map(cat => ({
     cat,
     items: data
@@ -63,11 +64,10 @@ function LinksSlot({ data = [], categories = [] }) {
 
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)
-
-  // 用 LayoutIndex（不会查 Notion slug），并用 children 渲染自定义内容
+  // ✅ 用 LayoutSlug（需要 Notion 里存在 slug=links 的“占位页”）
   return (
-    <DynamicLayout theme={theme} layoutName="LayoutIndex" {...props}>
-      <LinksSlot data={props.items} categories={props.categories} />
+    <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
+      <LinksBody data={props.items} categories={props.categories} />
     </DynamicLayout>
   )
 }
@@ -75,7 +75,6 @@ export default function Links(props) {
 export async function getStaticProps({ locale }) {
   const base = await getGlobalData({ from: 'links', locale })
   const { items, categories } = await getLinksAndCategories()
-  // 只返回可序列化数据
   return {
     props: { ...base, items, categories },
     revalidate: siteConfig('NEXT_REVALIDATE_SECOND', BLOG.NEXT_REVALIDATE_SECOND, base.NOTION_CONFIG)
