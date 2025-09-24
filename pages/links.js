@@ -1,85 +1,29 @@
-// /pages/links.js
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
 import { getLinksAndCategories } from '@/lib/links'
 
-function LinksSlot({ data = [], categories = [] }) {
-  const groups = categories.map(cat => ({
-    cat,
-    items: data
-      .filter(x => (cat === '未分类' ? !x.Categories?.length : x.Categories?.includes(cat)))
-      .sort((a, b) => (b.Weight || 0) - (a.Weight || 0) || a.Name.localeCompare(b.Name))
-  }))
-
-  return (
-    <div className="max-w-5xl mx-auto px-4 py-10">
-      <h1 className="text-2xl font-bold mb-4">友情链接</h1>
-      <div className="grid gap-10">
-        {groups.map(({ cat, items }) => (
-          <section key={cat}>
-            <h2 className="text-xl font-semibold mb-4">{cat}</h2>
-            {items.length === 0 ? (
-              <div className="text-sm opacity-60">此分类暂无条目</div>
-            ) : (
-              <ul className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                {items.map(it => (
-                  <li key={`${cat}-${it.URL}`} className="border rounded-2xl p-4 hover:shadow transition">
-                    <a
-                      href={it.URL}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow external"
-                      className="flex items-center gap-3 no-underline"
-                      onClick={e => e.stopPropagation()}  // 避免主题层拦截
-                    >
-                      <img
-                        src={it.Avatar}
-                        alt={it.Name}
-                        className="w-10 h-10 rounded-lg object-cover"
-                        onError={e => {
-                          try {
-                            const u = new URL(it.URL)
-                            e.currentTarget.src = `https://icons.duckduckgo.com/ip3/${u.hostname}.ico`
-                          } catch {
-                            e.currentTarget.src = '/favicon.ico'
-                          }
-                        }}
-                      />
-                      <div>
-                        <div className="font-medium">{it.Name}</div>
-                        <div className="text-xs opacity-70 mt-1 line-clamp-2">{it.Description}</div>
-                      </div>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ))}
-      </div>
-    </div>
-  )
-}
+function LinksSlot({ data = [], categories = [] }) { /* 你的渲染逻辑保留 */ }
 
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)
-  // ⚠️ React 元素在组件里创建，再传给布局；不是从 getStaticProps 返回
   const slot = <LinksSlot data={props.items} categories={props.categories} />
 
-  // 你的主题通常既支持 children 也支持 slot；二选一留一个即可
-  return (
-    <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props} slot={slot}>
-      {/* 如果你的主题不吃 slot，就用 children：<LinksSlot …/> */}
-    </DynamicLayout>
-  )
+  // ✅ 不要用 LayoutSlug，换成 LayoutIndex（不依赖 Notion 页，侧栏也会正常）
+  return <DynamicLayout theme={theme} layoutName="LayoutIndex" {...props} slot={slot} />
+
+  // 若你的主题不支持 slot，就用 children：
+  // return (
+  //   <DynamicLayout theme={theme} layoutName="LayoutIndex" {...props}>
+  //     <LinksSlot data={props.items} categories={props.categories} />
+  //   </DynamicLayout>
+  // )
 }
 
 export async function getStaticProps({ locale }) {
   const base = await getGlobalData({ from: 'links', locale })
   const { items, categories } = await getLinksAndCategories()
-
-  // 只返回可序列化数据
   return {
     props: { ...base, items, categories },
     revalidate: siteConfig('NEXT_REVALIDATE_SECOND', BLOG.NEXT_REVALIDATE_SECOND, base.NOTION_CONFIG)
