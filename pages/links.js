@@ -1,135 +1,143 @@
-// /pages/links.js   （若用 src 结构放 /src/pages/links.js）
-import BLOG from '@/blog.config'
-import { siteConfig } from '@/lib/config'
-import { getGlobalData } from '@/lib/db/getSiteData'
-import { DynamicLayout } from '@/themes/theme'
-import { getLinksAndCategories } from '@/lib/links'
+// /lib/links.js
+const NOTION_TOKEN = process.env.NOTION_TOKEN
+const DB_ID = process.env.FRIENDS_DB_ID
+const NOTION_VERSION = '2022-06-28'
 
-function LinksBody({ data = [], categories = [] }) {
-  const groups = (categories || []).map(cat => ({
-    cat,
-    items: (data || [])
-      .filter(x => (cat === '未分类' ? !x.Categories?.length : x.Categories?.includes(cat)))
-      .sort((a, b) => (b.Weight || 0) - (a.Weight || 0) || a.Name.localeCompare(b.Name))
-  }))
-
-  return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 16px' }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, marginBottom: 12 }}>友情链接</h1>
-
-      {(!data || data.length === 0) ? (
-        <div style={{ opacity: .7 }}>暂无数据。请检查 Notion 库授权与字段（Name / URL / Category）。</div>
-      ) : (
-        <div style={{ display: 'grid', gap: 40 }}>
-          {groups.map(({ cat, items }) => (
-            <section key={cat}>
-              <h2 style={{ fontSize: 20, fontWeight: 600, margin: '0 0 12px' }}>{cat}</h2>
-              {items.length === 0 ? (
-                <div style={{ opacity: .6, fontSize: 14 }}>此分类暂无条目</div>
-              ) : (
-                <ul style={{
-                  listStyle: 'none', padding: 0, margin: 0,
-                  display: 'grid', gap: 16,
-                  gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))'
-                }}>
-                  {items.map(it => (
-                    <li key={`${cat}-${it.URL}`} style={{
-                      border: '1px solid #e5e7eb', borderRadius: 16, padding: 14
-                    }}>
-                      <a
-                        href={it.URL}
-                        target="_blank"
-                        rel="noopener noreferrer nofollow external"
-                        style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none' }}
-                      >
-                        <img
-                          src={it.Avatar}
-                          alt={it.Name}
-                          loading="lazy"
-                          style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }}
-                          onError={e => {
-                            try {
-                              const u = new URL(it.URL)
-                              e.currentTarget.src = `https://icons.duckduckgo.com/ip3/${u.hostname}.ico`
-                            } catch {
-                              e.currentTarget.src = '/favicon.ico'
-                            }
-                          }}
-                        />
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{it.Name}</div>
-                          <div style={{ opacity: .7, fontSize: 12, marginTop: 2 }}>{it.Description}</div>
-                        </div>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
-        </div>
-      )}
-
-      {/* 仅在 /links 隐藏 Notion 正文（当走 LayoutSlug 时，避免把原始数据库表渲染出来） */}
-      <style jsx global>{`
-        html.__links_hide_notion article .notion,
-        html.__links_hide_notion article .notion-page {
-          display: none !important;
+// 10 秒超时；429/5xx 最多重试 2 次
+async function notion(path, init = {}, { timeout = 10000, retries = 2 } = {}) {
+  let lastErr
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort('timeout'), timeout)
+    try {
+      const res = await fetch(`https://api.notion.com/v1${path}`, {
+        ...init,
+        headers: {
+          'Authorization': `Bearer ${NOTION_TOKEN}`,
+          'Notion-Version': NOTION_VERSION,
+          'Content-Type': 'application/json',
+          ...(init.headers || {})
+        },
+        signal: ac.signal
+      })
+      clearTimeout(t)
+      if (!res.ok) {
+        const txt = await res.text()
+        if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+          await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
+          continue
         }
-      `}</style>
-    </div>
-  )
-}
-
-export default function Links(props) {
-  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
-
-  // 有 slug=links 的占位页 → 用主题外壳，并隐藏 Notion 正文；否则直接渲染自定义页面
-  if (props.__hasSlug) {
-    // 给 html 打标，配合上面的全局样式只在 /links 隐藏 Notion 正文
-    if (typeof document !== 'undefined') {
-      document.documentElement.classList.add('__links_hide_notion')
+        throw new Error(`Notion ${res.status}: ${txt}`)
+      }
+      return res.json()
+    } catch (e) {
+      clearTimeout(t)
+      lastErr = e
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
+        continue
+      }
+      throw lastErr
     }
-    return (
-      <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
-        <LinksBody data={props.items} categories={props.categories} />
-      </DynamicLayout>
-    )
   }
-
-  return <LinksBody data={props.items} categories={props.categories} />
 }
 
-// ISR：稳定且快速；并探测是否存在 slug=links 占位页
-export async function getStaticProps({ locale }) {
-  let base = {}
-  let items = []
-  let categories = []
-  let hasSlug = false
+const pick = (props, names) => { for (const n of names) if (props?.[n]) return props[n] }
+const t    = p => (p?.title || []).map(x => x?.plain_text || '').join('')
+const rich = p => (p?.rich_text || []).map(x => x?.plain_text || '').join('')
+const url  = p => p?.url || ''
+const sel  = p => p?.select?.name || ''
+const num  = p => typeof p?.number === 'number' ? p.number : 0
 
+const withHttps = u => {
+  if (!u) return ''
+  const s = String(u).trim()
+  return /^https?:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, '')}`
+}
+
+function resolveAvatar(avatarProp, siteUrl) {
+  const f = avatarProp?.files?.[0]
+  if (f) {
+    if (f.type === 'external' && f.external?.url) return withHttps(f.external.url)
+    if (f.type === 'file' && f.file?.url) return f.file.url // 可能过期，前端 onError 再兜底
+  }
+  if (avatarProp?.url) return withHttps(avatarProp.url)
   try {
-    base = await getGlobalData({ from: 'links', locale })
-    const pages = base?.allPages || base?.pages || []
-    hasSlug = Array.isArray(pages) && pages.some(p =>
-      (p?.slug === 'links' || p?.slug?.value === 'links') &&
-      (p?.type === 'Page' || p?.type?.value === 'Page') &&
-      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
-    )
-  } catch (e) {
-    base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
+    const u = new URL(siteUrl)
+    return `https://icons.duckduckgo.com/ip3/${u.hostname}.ico`
+  } catch {}
+  return '/favicon.ico'
+}
+
+export async function getLinksAndCategories() {
+  if (!NOTION_TOKEN || !DB_ID) throw new Error('Missing NOTION_TOKEN or FRIENDS_DB_ID')
+
+  const db = await notion(`/databases/${DB_ID}`)
+  const opt = db.properties?.Category?.select?.options || db.properties?.Category?.multi_select?.options || []
+  const optionOrder = opt.map(o => o.name)
+
+  const statusKey = ['Status','状态','Visible','发布','Published','公开'].find(k => db.properties?.[k])
+  const filter = statusKey ? {
+    or: [
+      { property: statusKey, select: { equals: '正常' } },
+      { property: statusKey, select: { equals: 'Normal' } },
+      { property: statusKey, select: { equals: 'Published' } },
+      { property: statusKey, select: { equals: '公开' } }
+    ]
+  } : undefined
+
+  const sorts = []
+  if (db.properties?.Weight) sorts.push({ property: 'Weight', direction: 'descending' })
+  if (db.properties?.Name)   sorts.push({ property: 'Name',   direction: 'ascending'  })
+
+  const items = []
+  let start_cursor, has_more = true
+
+  while (has_more) {
+    const body = { page_size: 100, start_cursor }
+    if (filter) body.filter = filter
+    if (sorts.length) body.sorts = sorts
+
+    const data = await notion(`/databases/${DB_ID}/query`, { method: 'POST', body: JSON.stringify(body) })
+
+    for (const page of data.results) {
+      const p = page.properties
+      const pName = pick(p, ['Name','名称','标题'])
+      const pURL  = pick(p, ['URL','Link','链接'])
+      const pDesc = pick(p, ['Description','描述','简介','Desc'])
+      const pAvat = pick(p, ['Avatar','Icon','图标'])
+      const pLang = pick(p, ['Language','语言'])
+      const pCat  = pick(p, ['Category','分类'])
+      const pW    = pick(p, ['Weight','权重'])
+      const pRSS  = pick(p, ['RSS'])
+
+      const site = withHttps(url(pURL))
+      const avatar = resolveAvatar(pAvat, site)
+
+      const cats = []
+      if (pCat?.multi_select) cats.push(...pCat.multi_select.map(s => s.name))
+      else if (pCat?.select)  cats.push(pCat.select.name)
+
+      items.push({
+        Name: t(pName),
+        URL: site,
+        Categories: cats,
+        Description: rich(pDesc),
+        Avatar: avatar,
+        Language: sel(pLang),
+        Weight: num(pW),
+        RSS: withHttps(url(pRSS))
+      })
+    }
+
+    has_more = data.has_more
+    start_cursor = data.next_cursor
   }
 
-  try {
-    const r = await getLinksAndCategories()
-    items = r?.items || []
-    categories = r?.categories || []
-  } catch (e) {
-    items = []
-    categories = []
-  }
+  const used = Array.from(new Set(items.flatMap(i => i.Categories || []).filter(Boolean)))
+  let categories = optionOrder.filter(n => used.includes(n))
+  for (const c of used) if (!categories.includes(c)) categories.push(c)
+  if (items.some(i => !i.Categories?.length)) categories = [...categories, '未分类']
 
-  return {
-    props: { ...base, items, categories, __hasSlug: hasSlug },
-    revalidate: 600 // 10 分钟后台增量刷新
-  }
+  return { items, categories }
 }
