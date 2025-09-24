@@ -1,3 +1,4 @@
+// middleware.ts
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { checkStrIsNotionId, getLastPartOfUrl } from '@/lib/utils'
@@ -5,14 +6,15 @@ import { idToUuid } from 'notion-utils'
 import BLOG from './blog.config'
 
 /**
- * Clerk 身份验证中间件
+ * Next.js Middleware 匹配范围
+ * （保持你原来的 matcher，不动）
  */
 export const config = {
-  // 这里设置白名单, 防止静态资源被拦截
+  // 注意：这里不需要把 /links 写进 matcher；白名单在下面统一处理
   matcher: ['/((?!.*\\..*|_next|/sign-in|/auth).*)', '/', '/(api|trpc)(.*)']
 }
 
-// 限制登录访问的路由
+// 需要登录的路由
 const isTenantRoute = createRouteMatcher([
   '/user/organization-selector(.*)',
   '/user/orgid/(.*)',
@@ -20,21 +22,23 @@ const isTenantRoute = createRouteMatcher([
   '/dashboard/(.*)'
 ])
 
-// 限制权限访问的路由
+// 需要管理员权限的路由
 const isTenantAdminRoute = createRouteMatcher([
   '/admin/(.*)/memberships',
   '/admin/(.*)/domain'
 ])
 
 /**
- * 没有配置权限相关功能的返回
- * @param req
- * @param ev
- * @returns
+ * 未启用 Clerk（或无鉴权）时的中间件
+ * - 这里可能会启用 UUID_REDIRECT（Notion 页面 UUID → slug 映射）
  */
-// eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
 const noAuthMiddleware = async (req: NextRequest, ev: any) => {
-  // 如果没有配置 Clerk 相关环境变量, 返回一个默认响应或者继续处理请求
+  // ✅ 兜底白名单：/links 直接放行，避免进入任何重写/跳转逻辑
+  const pathname = req.nextUrl.pathname
+  if (pathname === '/links' || pathname === '/links/') {
+    return NextResponse.next()
+  }
+
   if (BLOG['UUID_REDIRECT']) {
     let redirectJson: Record<string, string> = {}
     try {
@@ -58,27 +62,27 @@ const noAuthMiddleware = async (req: NextRequest, ev: any) => {
       return NextResponse.redirect(redirectToUrl, 308)
     }
   }
+
   return NextResponse.next()
 }
 
 /**
- * 鉴权中间件
+ * 启用 Clerk 时的中间件
  */
 const authMiddleware = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   ? clerkMiddleware((auth, req) => {
       const { userId } = auth()
 
-      // 处理 /dashboard 路由的登录保护
+      // 登录保护
       if (isTenantRoute(req)) {
         if (!userId) {
-          // 用户未登录, 重定向到 /sign-in
           const url = new URL('/sign-in', req.url)
-          url.searchParams.set('redirectTo', req.url) // 保存重定向目标
+          url.searchParams.set('redirectTo', req.url)
           return NextResponse.redirect(url)
         }
       }
 
-      // 处理管理员相关权限保护
+      // 管理员权限保护
       if (isTenantAdminRoute(req)) {
         auth().protect(has => {
           return (
@@ -88,9 +92,23 @@ const authMiddleware = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
         })
       }
 
-      // 默认继续处理请求
       return NextResponse.next()
     })
   : noAuthMiddleware
 
-export default authMiddleware
+/**
+ * ✅ 顶层导出：统一做 /links 白名单早退
+ * - /links 直接放行
+ * - 其他路径交给原中间件（鉴权 / UUID 重定向等）
+ */
+export default function middleware(req: NextRequest, ev: any) {
+  const { pathname } = req.nextUrl
+
+  // 白名单：确保 /links 刷新直达，不参与 slug/UUID 重写，也不触发循环跳转
+  if (pathname === '/links' || pathname === '/links/') {
+    return NextResponse.next()
+  }
+
+  // 其余路径按原逻辑处理
+  return (authMiddleware as any)(req, ev)
+}
