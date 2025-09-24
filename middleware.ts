@@ -1,15 +1,13 @@
-// middleware.ts  （或 src/middleware.ts）
+// middleware.ts  或  src/middleware.ts
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-import { NextRequest, NextResponse } from 'next/server'
-import { checkStrIsNotionId, getLastPartOfUrl } from '@/lib/utils'
-import { idToUuid } from 'notion-utils'
-import BLOG from './blog.config'
+import { NextResponse } from 'next/server'
 
-// 你的原 matcher 保留即可
+// 只在需要鉴权的路径执行中间件：dashboard / admin / user
 export const config = {
-  matcher: ['/((?!.*\\..*|_next|/sign-in|/auth).*)', '/', '/(api|trpc)(.*)']
+  matcher: ['/dashboard/:path*', '/admin/:path*', '/user/:path*']
 }
 
+// 这些匹配器只会在上述 matcher 路径下触发
 const isTenantRoute = createRouteMatcher([
   '/user/organization-selector(.*)',
   '/user/orgid/(.*)',
@@ -22,49 +20,7 @@ const isTenantAdminRoute = createRouteMatcher([
   '/admin/(.*)/domain'
 ])
 
-// 未开启 Clerk 时走这里
-const noAuthMiddleware = async (req: NextRequest, ev: any) => {
-  const { pathname } = req.nextUrl
-
-  // ① 白名单：/links 直接放行（兜底）
-  if (pathname === '/links' || pathname === '/links/') {
-    return NextResponse.next()
-  }
-
-  if (BLOG['UUID_REDIRECT']) {
-    let redirectJson: Record<string, string> = {}
-    try {
-      const response = await fetch(`${req.nextUrl.origin}/redirect.json`)
-      if (response.ok) {
-        redirectJson = (await response.json()) as Record<string, string>
-      }
-    } catch (err) {
-      console.error('Error fetching redirect.json:', err)
-    }
-
-    let lastPart = getLastPartOfUrl(pathname) as string
-    if (checkStrIsNotionId(lastPart)) lastPart = idToUuid(lastPart)
-
-    const mapTo = redirectJson[lastPart]
-    if (lastPart && mapTo) {
-      // ② 自我重定向保护：目标与当前一致时，不跳转（避免循环）
-      const targetPath = '/' + String(mapTo).replace(/^\/+/, '')
-      const now = pathname.replace(/\/+$/, '')
-      const tgt = targetPath.replace(/\/+$/, '')
-      if (tgt !== now) {
-        const to = req.nextUrl.clone()
-        to.pathname = targetPath
-        console.log(`redirect from ${pathname} to ${to.pathname}`)
-        return NextResponse.redirect(to, 308)
-      }
-    }
-  }
-
-  return NextResponse.next()
-}
-
-// 开启 Clerk 时走这里
-const authMiddleware = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+const mw = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   ? clerkMiddleware((auth, req) => {
       const { userId } = auth()
 
@@ -85,13 +41,6 @@ const authMiddleware = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
       return NextResponse.next()
     })
-  : noAuthMiddleware
+  : () => NextResponse.next()
 
-// ③ 顶层导出：再加一道 /links 白名单（最先返回）
-export default function middleware(req: NextRequest, ev: any) {
-  const { pathname } = req.nextUrl
-  if (pathname === '/links' || pathname === '/links/') {
-    return NextResponse.next()
-  }
-  return (authMiddleware as any)(req, ev)
-}
+export default mw
