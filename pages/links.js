@@ -1,4 +1,4 @@
-// /pages/links.js   （如果是 src 结构，放 /src/pages/links.js）
+// /pages/links.js
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
@@ -10,7 +10,7 @@ function LinksSlot({ data = [], categories = [] }) {
     cat,
     items: data
       .filter(x => (cat === '未分类' ? !x.Categories?.length : x.Categories?.includes(cat)))
-      .sort((a,b)=> (b.Weight||0)-(a.Weight||0) || a.Name.localeCompare(b.Name))
+      .sort((a, b) => (b.Weight || 0) - (a.Weight || 0) || a.Name.localeCompare(b.Name))
   }))
 
   return (
@@ -31,7 +31,7 @@ function LinksSlot({ data = [], categories = [] }) {
                       target="_blank"
                       rel="noopener noreferrer nofollow external"
                       className="flex items-center gap-3 no-underline"
-                      onClick={e => e.stopPropagation()} // 防止主题层有点击拦截
+                      onClick={e => e.stopPropagation()}  // 避免主题层拦截
                     >
                       <img
                         src={it.Avatar}
@@ -64,22 +64,24 @@ function LinksSlot({ data = [], categories = [] }) {
 
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)
-  return <DynamicLayout theme={theme} layoutName='LayoutSlug' {...props} />
+  // ⚠️ React 元素在组件里创建，再传给布局；不是从 getStaticProps 返回
+  const slot = <LinksSlot data={props.items} categories={props.categories} />
+
+  // 你的主题通常既支持 children 也支持 slot；二选一留一个即可
+  return (
+    <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props} slot={slot}>
+      {/* 如果你的主题不吃 slot，就用 children：<LinksSlot …/> */}
+    </DynamicLayout>
+  )
 }
 
 export async function getStaticProps({ locale }) {
-  const props = await getGlobalData({ from: 'links', locale })
+  const base = await getGlobalData({ from: 'links', locale })
   const { items, categories } = await getLinksAndCategories()
 
-  // 把自定义内容塞进 slot，交给主题外壳渲染（含右侧栏）
-  props.slot = <LinksSlot data={items} categories={categories} />
-
+  // 只返回可序列化数据
   return {
-    props,
-    revalidate: siteConfig(
-      'NEXT_REVALIDATE_SECOND',
-      BLOG.NEXT_REVALIDATE_SECOND,
-      props.NOTION_CONFIG
-    )
+    props: { ...base, items, categories },
+    revalidate: siteConfig('NEXT_REVALIDATE_SECOND', BLOG.NEXT_REVALIDATE_SECOND, base.NOTION_CONFIG)
   }
 }
