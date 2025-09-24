@@ -1,4 +1,3 @@
-// /pages/links.js  （src 结构就放 /src/pages/links.js）
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
@@ -63,20 +62,61 @@ function LinksBody({ data = [], categories = [] }) {
 }
 
 export default function Links(props) {
-  const theme = siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)
-  // ✅ 用 LayoutSlug（需要 Notion 里存在 slug=links 的“占位页”）
+  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
+  // 如果 getStaticProps 没拿到 slug 页面，LayoutSlug 会 404；
+  // 我们自动回退到 LayoutIndex，避免构建或运行时报错。
+  const layout = props?.__hasSlug ? 'LayoutSlug' : 'LayoutIndex'
+
   return (
-    <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
-      <LinksBody data={props.items} categories={props.categories} />
+    <DynamicLayout theme={theme} layoutName={layout} {...props}>
+      <LinksBody data={props.items || []} categories={props.categories || []} />
     </DynamicLayout>
   )
 }
 
 export async function getStaticProps({ locale }) {
-  const base = await getGlobalData({ from: 'links', locale })
-  const { items, categories } = await getLinksAndCategories()
+  let base = {}
+  let items = []
+  let categories = []
+  let hasSlug = false
+
+  // 1) 主题全局数据（出错也不抛）
+  try {
+    base = await getGlobalData({ from: 'links', locale })
+    // 判断主内容库里是否存在 slug=links 的页面（有则让我们用 LayoutSlug）
+    // 不同版本结构略有差异，尽量宽松判断：
+    const pages = base?.allPages || base?.pages || []
+    hasSlug = Array.isArray(pages) && pages.some(p =>
+      (p?.slug === 'links' || p?.slug?.value === 'links') &&
+      (p?.type === 'Page' || p?.type?.value === 'Page') &&
+      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
+    )
+  } catch (e) {
+    console.error('getGlobalData error:', e?.message || e)
+    // 兜底：至少返回 NOTION_CONFIG，防止主题读取 undefined
+    base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
+  }
+
+  // 2) 友链数据（出错不抛）
+  try {
+    const r = await getLinksAndCategories()
+    items = r?.items || []
+    categories = r?.categories || []
+  } catch (e) {
+    console.error('getLinksAndCategories error:', e?.message || e)
+    items = []
+    categories = []
+  }
+
   return {
-    props: { ...base, items, categories },
-    revalidate: siteConfig('NEXT_REVALIDATE_SECOND', BLOG.NEXT_REVALIDATE_SECOND, base.NOTION_CONFIG)
+    props: {
+      ...base,
+      items,
+      categories,
+      __hasSlug: hasSlug,      // 仅作选择布局用，可序列化
+      __generatedAt: Date.now() // 避免某些静态缓存边缘情况
+    },
+    // 用固定数值，避免主题配置取不到时返回 undefined
+    revalidate: 60
   }
 }
