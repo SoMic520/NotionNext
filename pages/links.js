@@ -1,4 +1,8 @@
-// /pages/links.js   （src 结构就放 /src/pages/links.js）
+// /pages/links.js   （若用 src 结构放 /src/pages/links.js）
+import BLOG from '@/blog.config'
+import { siteConfig } from '@/lib/config'
+import { getGlobalData } from '@/lib/db/getSiteData'
+import { DynamicLayout } from '@/themes/theme'
 import { getLinksAndCategories } from '@/lib/links'
 
 function LinksBody({ data = [], categories = [] }) {
@@ -65,21 +69,67 @@ function LinksBody({ data = [], categories = [] }) {
           ))}
         </div>
       )}
+
+      {/* 仅在 /links 隐藏 Notion 正文（当走 LayoutSlug 时，避免把原始数据库表渲染出来） */}
+      <style jsx global>{`
+        html.__links_hide_notion article .notion,
+        html.__links_hide_notion article .notion-page {
+          display: none !important;
+        }
+      `}</style>
     </div>
   )
 }
 
 export default function Links(props) {
+  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
+
+  // 有 slug=links 的占位页 → 用主题外壳，并隐藏 Notion 正文；否则直接渲染自定义页面
+  if (props.__hasSlug) {
+    // 给 html 打标，配合上面的全局样式只在 /links 隐藏 Notion 正文
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.add('__links_hide_notion')
+    }
+    return (
+      <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
+        <LinksBody data={props.items} categories={props.categories} />
+      </DynamicLayout>
+    )
+  }
+
   return <LinksBody data={props.items} categories={props.categories} />
 }
 
-// ✅ ISR：首个请求生成静态页；之后从 CDN 直出；后台定期增量刷新。
-// 失败时也返回空数据，页面不会“无限加载”或报错。
-export async function getStaticProps() {
+// ISR：稳定且快速；并探测是否存在 slug=links 占位页
+export async function getStaticProps({ locale }) {
+  let base = {}
+  let items = []
+  let categories = []
+  let hasSlug = false
+
   try {
-    const { items, categories } = await getLinksAndCategories()
-    return { props: { items, categories }, revalidate: 600 } // 10 分钟刷新一次
+    base = await getGlobalData({ from: 'links', locale })
+    const pages = base?.allPages || base?.pages || []
+    hasSlug = Array.isArray(pages) && pages.some(p =>
+      (p?.slug === 'links' || p?.slug?.value === 'links') &&
+      (p?.type === 'Page' || p?.type?.value === 'Page') &&
+      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
+    )
   } catch (e) {
-    return { props: { items: [], categories: [] }, revalidate: 300 }
+    base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
+  }
+
+  try {
+    const r = await getLinksAndCategories()
+    items = r?.items || []
+    categories = r?.categories || []
+  } catch (e) {
+    items = []
+    categories = []
+  }
+
+  return {
+    props: { ...base, items, categories, __hasSlug: hasSlug },
+    revalidate: 600 // 10 分钟后台增量刷新
   }
 }
