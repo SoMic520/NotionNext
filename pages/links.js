@@ -3,9 +3,9 @@ import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
-import getLinksAndCategories from '@/lib/links' // 默认导入，最稳
+import getLinksAndCategories from '@/lib/links' // 默认导入
 
-function safeHost(u) { try { return new URL(u).hostname } catch { return '' } }
+function safeHost(u) { try { return new URL(u).hostname.toLowerCase() } catch { return '' } }
 
 function LinksBody({ data = [], categories = [] }) {
   const groups = (categories || []).map(cat => ({
@@ -16,8 +16,8 @@ function LinksBody({ data = [], categories = [] }) {
   }))
 
   return (
-    <div className="links-wrap">
-      <header className="top">
+    <div className="wrap">
+      <header className="hd">
         <h1>友情链接</h1>
         <p>精选站点，按分类归纳。悬停查看简介，点击将在新窗口打开。</p>
       </header>
@@ -32,14 +32,19 @@ function LinksBody({ data = [], categories = [] }) {
                 <h2 className="group-title">{cat}</h2>
                 <span className="group-count">共 {items.length} 个</span>
               </div>
+
               {items.length === 0 ? (
                 <div className="group-empty">此分类暂无条目</div>
               ) : (
                 <ul className="cards">
                   {items.map(it => {
                     const host = it.URL ? safeHost(it.URL) : ''
-                    const initial = it.Avatar || (host ? `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico` : '/favicon.ico')
-                    const s2 = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : '/favicon.ico'
+                    // 兜底：Avatar → DuckDuckGo → /favicon.ico → Google S2 → 本地
+                    const iconDuck = host ? `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico` : '/favicon.ico'
+                    const iconRoot = host ? `https://${host}/favicon.ico` : '/favicon.ico'
+                    const iconS2   = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : '/favicon.ico'
+                    const initial  = it.Avatar || iconDuck
+
                     return (
                       <li key={`${cat}-${it.URL || it.Name}`}>
                         <a className="card" href={it.URL || '#'} target="_blank" rel="noopener noreferrer nofollow external" aria-label={it.Name}>
@@ -47,28 +52,26 @@ function LinksBody({ data = [], categories = [] }) {
                             <img
                               src={initial}
                               alt={it.Name}
+                              title={host || it.Name}
                               loading="lazy"
                               decoding="async"
+                              referrerPolicy="no-referrer"
                               crossOrigin="anonymous"
                               data-fallback="0"
                               onError={e => {
                                 const step = Number(e.currentTarget.dataset.fallback || '0')
-                                if (step === 0 && host) {
-                                  e.currentTarget.dataset.fallback = '1'
-                                  e.currentTarget.src = s2
-                                } else if (step === 1) {
-                                  e.currentTarget.dataset.fallback = '2'
-                                  e.currentTarget.src = '/favicon.ico'
-                                }
+                                if (step === 0) { e.currentTarget.dataset.fallback = '1'; e.currentTarget.src = iconRoot }
+                                else if (step === 1) { e.currentTarget.dataset.fallback = '2'; e.currentTarget.src = iconS2 }
+                                else if (step === 2) { e.currentTarget.dataset.fallback = '3'; e.currentTarget.src = '/favicon.ico' }
                               }}
                             />
                           </div>
+
                           <div className="meta">
                             <div className="name">{it.Name}</div>
                             {it.Description && <p className="desc">{it.Description}</p>}
                             {host && <div className="host">{host.replace(/^www\./, '')}</div>}
                           </div>
-                          <div className="shine" aria-hidden />
                         </a>
                       </li>
                     )
@@ -81,57 +84,67 @@ function LinksBody({ data = [], categories = [] }) {
       )}
 
       <style jsx>{`
-        :root {
-          --bg: #ffffff; --card: #ffffff; --txt: #0b1220; --sub: #334155; --muted: #64748b;
-          --line: #e5e7eb; --ring: 59,130,246; --glow: 59,130,246; --shadow: 16,24,40; --radius: 18px;
+        :root{
+          --bg:#fff;--txt:#0b1220;--sub:#334155;--muted:#64748b;
+          --box:#dfe3ea; /* 卡片边框色（方框） */
+          --boxHover:#7aa2ff; /* 悬停时边框高亮 */
+          --line:#e5e7eb; --shadow:16,24,40; --radius:12px;
         }
-        @media (prefers-color-scheme: dark) {
-          :root { --bg:#0b1220; --card:#0d1424; --txt:#e5e7eb; --sub:#cbd5e1; --muted:#94a3b8; --line:#1f2937; --ring:56,189,248; --glow:56,189,248; --shadow:0,0,0; }
+        @media (prefers-color-scheme: dark){
+          :root{ --bg:#0b1220; --txt:#e5e7eb; --sub:#cbd5e1; --muted:#94a3b8; --box:#263244; --boxHover:#4aa8ff; --line:#1f2937; --shadow:0,0,0 }
         }
 
-        .links-wrap { max-width: 1120px; margin: 0 auto; padding: 42px 16px 60px; background: var(--bg); }
-        .top h1 { margin:0; font-size:30px; line-height:1.22; font-weight:800; letter-spacing:-.02em; color:var(--txt) }
-        .top p { margin:10px 0 0; font-size:15px; color:var(--muted) }
+        .wrap{ max-width:1080px; margin:0 auto; padding:32px 16px 56px; background:var(--bg) }
+        .hd h1{ margin:0; font-size:28px; font-weight:800; color:var(--txt) }
+        .hd p{ margin:8px 0 0; font-size:14px; color:var(--muted) }
 
-        .empty { margin-top:16px; padding:28px 20px; border:1px dashed var(--line); border-radius:calc(var(--radius) + 4px); color:var(--muted); text-align:center; backdrop-filter:blur(6px); font-size:15px }
+        .empty{ margin-top:16px; padding:20px; border:1px dashed var(--box); border-radius:var(--radius); color:var(--muted); text-align:center }
 
-        .groups { display:flex; flex-direction:column; gap:38px; margin-top:14px }
-        .group-head { margin-bottom:12px; display:flex; align-items:center; justify-content:space-between }
-        .group-title { font-size:19px; font-weight:750; color:var(--txt); margin:0 }
-        .group-count { font-size:12px; color:var(--muted) }
+        .groups{ display:flex; flex-direction:column; gap:28px; margin-top:10px }
+        .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px }
+        .group-title{ margin:0; font-size:18px; font-weight:700; color:var(--txt) }
+        .group-count{ font-size:12px; color:var(--muted) }
+        .group-empty{ border:1px solid var(--box); border-radius:var(--radius); padding:12px 14px; color:var(--muted); font-size:14px }
 
-        .group-empty { border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; color:var(--muted); font-size:14px }
+        .cards{ list-style:none; padding:0; margin:0; display:grid; gap:12px; grid-template-columns:repeat(1,minmax(0,1fr)) }
+        @media(min-width:560px){ .cards{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
+        @media(min-width:900px){ .cards{ grid-template-columns:repeat(3,minmax(0,1fr)) } }
 
-        .cards { list-style:none; padding:0; margin:0; display:grid; gap:16px; grid-template-columns:repeat(1, minmax(0, 1fr)) }
-        @media (min-width:560px){ .cards{ grid-template-columns:repeat(2, minmax(0, 1fr)) } }
-        @media (min-width:900px){ .cards{ grid-template-columns:repeat(3, minmax(0, 1fr)) } }
+        /* —— 关键：整体“方框卡片”样式 —— */
+        .card{
+          position:relative; display:flex; gap:12px; align-items:flex-start;
+          padding:12px 14px; background:#fff; border:1px solid var(--box); border-radius:var(--radius);
+          text-decoration:none;
+          transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease, background-color .18s ease;
+          box-shadow: 0 1px 2px rgba(var(--shadow), .03);
+        }
+        @media (prefers-color-scheme: dark){ .card{ background:#0d1424 } }
+        .card:hover{
+          border-color: var(--boxHover);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 10px rgba(var(--shadow), .06);
+        }
+        .card:focus-visible{ outline:none; box-shadow: 0 0 0 2px var(--boxHover) }
 
-        .card { position:relative; display:flex; gap:14px; align-items:flex-start; padding:16px; border-radius:var(--radius);
-          text-decoration:none; background:var(--card); border:1px solid var(--line);
-          box-shadow: 0 1px 1px rgba(var(--shadow), .04), 0 10px 18px rgba(var(--shadow), .06);
-          transform:translateZ(0); transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease, background .22s ease; will-change: transform, box-shadow }
-        .card:hover { transform:translateY(-2px); box-shadow: 0 2px 4px rgba(var(--shadow), .06), 0 16px 28px rgba(var(--shadow), .10);
-          border-color: rgba(var(--ring), .45); background: radial-gradient(900px 180px at 96% 0%, rgba(var(--glow), .06), transparent 55%) var(--card) }
-        .card:focus-visible { outline:none; box-shadow: 0 0 0 2px rgba(var(--ring), .9), 0 12px 26px rgba(var(--shadow), .10) }
+        /* 左侧图标保持小方块（与截图一致） */
+        .icon{
+          flex:0 0 auto; width:44px; height:44px;
+          border-radius:10px; overflow:hidden;
+          background:#fff; border:1px solid var(--box);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.5);
+        }
+        @media (prefers-color-scheme: dark){ .icon{ background:#0f172a } }
+        .icon img{ width:100%; height:100%; object-fit:cover; display:block }
 
-        .icon { flex:0 0 auto; width:48px; height:48px; border-radius:12px; overflow:hidden; background:linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0)); border:1px solid var(--line); transform:translateZ(0) }
-        .icon img { width:100%; height:100%; object-fit:cover; opacity:0; animation:fadeIn .3s ease-out forwards; display:block }
-
-        .meta { min-width:0 }
-        .name { color:var(--txt); font-weight:750; font-size:16px; line-height:1.3; letter-spacing:.01em; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-        .desc { margin:6px 0 0; color:var(--sub); font-size:13px; line-height:1.7; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
-        .host { margin-top:8px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-
-        .shine { pointer-events:none; position:absolute; inset:0; border-radius:inherit; background:linear-gradient(135deg, rgba(var(--glow), .0) 40%, rgba(var(--glow), .18) 60%, rgba(var(--glow), .0) 80%); opacity:0; transition:opacity .28s ease }
-        .card:hover .shine { opacity:1 }
-
-        @keyframes fadeIn { to { opacity:1 } }
-        @media (prefers-reduced-motion: reduce){ .card, .card:hover{ transition:none !important; transform:none !important; box-shadow:none !important } .icon img{ animation:none !important; opacity:1 !important } }
+        .meta{ min-width:0 }
+        .name{ color:var(--txt); font-weight:800; font-size:16px; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+        .desc{ margin:4px 0 0; color:var(--sub); font-size:13px; line-height:1.6; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+        .host{ margin-top:6px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
       `}</style>
 
       <style jsx global>{`
         html.__links_hide_notion article .notion,
-        html.__links_hide_notion article .notion-page { display: none !important; }
+        html.__links_hide_notion article .notion-page { display:none !important; }
       `}</style>
     </div>
   )
@@ -150,6 +163,7 @@ export default function Links(props) {
   return <LinksBody data={props.items} categories={props.categories} />
 }
 
+// ISR
 export async function getStaticProps({ locale }) {
   let base = {}
   let items = []
@@ -169,7 +183,7 @@ export async function getStaticProps({ locale }) {
   }
 
   try {
-    const r = await getLinksAndCategories({ debug: true })
+    const r = await getLinksAndCategories({ debug: false })
     items = r?.items || []
     categories = r?.categories || []
   } catch (e) {
@@ -177,8 +191,5 @@ export async function getStaticProps({ locale }) {
     categories = []
   }
 
-  return {
-    props: { ...base, items, categories, __hasSlug: hasSlug },
-    revalidate: 600
-  }
+  return { props: { ...base, items, categories, __hasSlug: hasSlug }, revalidate: 600 }
 }
