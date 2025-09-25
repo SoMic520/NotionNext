@@ -1,272 +1,206 @@
-// /pages/links.js
-import BLOG from '@/blog.config'
-import { siteConfig } from '@/lib/config'
-import { getGlobalData } from '@/lib/db/getSiteData'
-import { DynamicLayout } from '@/themes/theme'
-import { getLinksAndCategories } from '@/lib/links'
+// /lib/links.js
+const NOTION_TOKEN = process.env.NOTION_TOKEN
+const DB_ID = process.env.FRIENDS_DB_ID
+const NOTION_VERSION = '2022-06-28' // 支持 status 属性
 
-function DebugPanel({ __err, __dbg, __env }) {
-  if (!__err && !__dbg) return null
-  return (
-    <div className="dbg">
-      <h3>调试信息（仅无数据时展示）</h3>
-      {__err && <pre className="block">{String(__err)}</pre>}
-      {__dbg && (
-        <ul>
-          <li>NOTION_VERSION: {__dbg.NOTION_VERSION}</li>
-          <li>过滤是否被环境变量禁用: {__dbg.DISABLE_FILTER ? '是(FRIENDS_NO_FILTER=1)' : '否'}</li>
-          <li>数据库标题: {__dbg.dbTitle || '(空)'}</li>
-          <li>数据库是否包含 Category 列: {__dbg.dbHasCategory ? '是' : '否'}</li>
-          <li>状态过滤字段: {__dbg.filterKey || '(未找到，将不筛选)'}</li>
-          <li>过滤类型: {__dbg.filterType || '(无)'}</li>
-          {__dbg.filterOptions && <li>可选状态值: {__dbg.filterOptions.join(', ')}</li>}
-          {__dbg.filterUsable && <li>允许的状态匹配: {__dbg.filterUsable.join(', ') || '(无)'}</li>}
-          <li>带过滤条数: {__dbg.countWithFilter}</li>
-          <li>是否回退无过滤: {__dbg.fallbackNoFilter ? '是' : '否'}</li>
-          <li>无过滤条数: {__dbg.countNoFilter}</li>
-        </ul>
-      )}
-      {__env && (
-        <>
-          <h4>环境变量</h4>
-          <ul>
-            <li>NOTION_TOKEN: {__env.hasToken ? '已设置' : '未设置'}</li>
-            <li>FRIENDS_DB_ID: {__env.dbMasked}</li>
-            <li>FRIENDS_NO_FILTER: {__env.noFilter ? '1(已禁用过滤)' : '(未禁用)'}</li>
-            <li>FRIENDS_DEBUG: {__env.debug ? '1(开启)' : '(关闭)'}</li>
-          </ul>
-        </>
-      )}
-      <p className="tip">
-        若 <code>带过滤条数=0</code> 而 <code>无过滤条数&gt;0</code>，请检查数据库中的“发布状态”列是否包含“已发布/公开/正常”等允许值；
-        或临时设置 <code>FRIENDS_NO_FILTER=1</code> 以忽略发布筛选。
-      </p>
-      <style jsx>{`
-        .dbg { margin-top: 16px; padding: 14px; border:1px dashed #e5e7eb; border-radius: 12px; font-size: 13px; color:#374151; }
-        .dbg h3{ margin:0 0 8px; font-size:14px; font-weight:700;}
-        .dbg h4{ margin:10px 0 6px; font-size:13px; font-weight:700;}
-        .dbg pre{ white-space:pre-wrap; background:#fafafa; padding:8px; border-radius:8px; border:1px solid #efefef}
-        .dbg ul{ margin:6px 0; padding-left:16px}
-        .dbg .tip{ margin-top:8px; color:#6b7280}
-        @media (prefers-color-scheme: dark){
-          .dbg{ border-color:#1f2937; color:#cbd5e1}
-          .dbg pre{ background:#0f172a; border-color:#1f2937}
+// 可选：设置 FRIENDS_NO_FILTER=1 可彻底关闭“发布状态”过滤；FRIENDS_DEBUG=1 输出调试信息
+const DISABLE_FILTER = String(process.env.FRIENDS_NO_FILTER || '').toLowerCase() === '1'
+const FRIENDS_DEBUG  = String(process.env.FRIENDS_DEBUG  || '').toLowerCase() === '1'
+
+// 10 秒超时；429/5xx 最多重试 2 次
+async function notion(path, init = {}, { timeout = 10000, retries = 2 } = {}) {
+  let lastErr
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort('timeout'), timeout)
+    try {
+      const res = await fetch(`https://api.notion.com/v1${path}`, {
+        ...init,
+        headers: {
+          'Authorization': `Bearer ${NOTION_TOKEN}`,
+          'Notion-Version': NOTION_VERSION,
+          'Content-Type': 'application/json',
+          ...(init.headers || {})
+        },
+        signal: ac.signal
+      })
+      clearTimeout(t)
+      if (!res.ok) {
+        const txt = await res.text()
+        if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+          await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
+          continue
         }
-      `}</style>
-    </div>
-  )
-}
-
-function LinksBody({ data = [], categories = [], debugInfo, envInfo }) {
-  const groups = (categories || []).map(cat => ({
-    cat,
-    items: (data || [])
-      .filter(x => (cat === '未分类' ? !x.Categories?.length : x.Categories?.includes(cat)))
-      .sort((a, b) => (b.Weight || 0) - (a.Weight || 0) || a.Name.localeCompare(b.Name))
-  }))
-
-  return (
-    <div className="links-wrap">
-      <header className="top">
-        <h1>友情链接</h1>
-        <p>精选站点，按分类归纳。悬停查看简介，点击将在新窗口打开。</p>
-      </header>
-
-      {(!data || data.length === 0) ? (
-        <>
-          <div className="empty">
-            暂无数据。请检查 Notion 权限与字段；下方调试信息可帮助快速定位。
-          </div>
-          <DebugPanel __err={debugInfo?.__err} __dbg={debugInfo?.__dbg} __env={envInfo} />
-        </>
-      ) : (
-        <div className="groups">
-          {groups.map(({ cat, items }) => (
-            <section key={cat} className="group">
-              <div className="group-head">
-                <h2 className="group-title">{cat}</h2>
-                <span className="group-count">共 {items.length} 个</span>
-              </div>
-              {items.length === 0 ? (
-                <div className="group-empty">此分类暂无条目</div>
-              ) : (
-                <ul className="cards">
-                  {items.map(it => (
-                    <li key={`${cat}-${it.URL || it.Name}`}>
-                      <a
-                        className="card"
-                        href={it.URL || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer nofollow external"
-                        aria-label={it.Name}
-                      >
-                        <div className="icon">
-                          <img
-                            src={it.Avatar || '/favicon.ico'}
-                            alt={it.Name}
-                            loading="lazy"
-                            onError={e => {
-                              try {
-                                if (it.URL) {
-                                  const u = new URL(it.URL)
-                                  e.currentTarget.src = `https://icons.duckduckgo.com/ip3/${u.hostname}.ico`
-                                } else {
-                                  e.currentTarget.src = '/favicon.ico'
-                                }
-                              } catch {
-                                e.currentTarget.src = '/favicon.ico'
-                              }
-                            }}
-                          />
-                        </div>
-                        <div className="meta">
-                          <div className="name">{it.Name}</div>
-                          {it.Description && <p className="desc">{it.Description}</p>}
-                          {it.URL && (
-                            <div className="host">
-                              {(() => {
-                                try { return new URL(it.URL).hostname.replace(/^www\./, '') }
-                                catch { return '' }
-                              })()}
-                            </div>
-                          )}
-                        </div>
-                        <div className="shine" aria-hidden />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
-        </div>
-      )}
-
-      {/* 样式（同上一版现代 UI） */}
-      <style jsx>{`
-        :root {
-          --bg: #ffffff; --card: #ffffffcc; --txt: #0f172a; --sub: #475569; --muted: #64748b;
-          --line: #e5e7eb; --ring: 66,153,225; --glow: 59,130,246; --shadow: 16,24,40; --radius: 16px;
-        }
-        @media (prefers-color-scheme: dark) {
-          :root { --bg:#0b1220; --card:#0b1220cc; --txt:#e5e7eb; --sub:#cbd5e1; --muted:#94a3b8; --line:#1f2937; --glow:56,189,248; --shadow:0,0,0; }
-        }
-        .links-wrap { max-width:1080px; margin:0 auto; padding:40px 16px 56px; background:var(--bg); }
-        .top h1 { margin:0; font-size:28px; line-height:1.25; font-weight:800; letter-spacing:-.02em; color:var(--txt)}
-        .top p { margin:8px 0 0; font-size:14px; color:var(--muted) }
-        .empty { margin-top:16px; padding:28px 20px; border:1px dashed var(--line); border-radius:calc(var(--radius) + 4px); color:var(--muted); text-align:center; backdrop-filter:blur(6px) }
-        .groups { display:flex; flex-direction:column; gap:36px; margin-top:12px }
-        .group-head { margin-bottom:10px; display:flex; align-items:center; justify-content:space-between }
-        .group-title { font-size:18px; font-weight:700; color:var(--txt); margin:0 }
-        .group-count { font-size:12px; color:var(--muted) }
-        .group-empty { border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; color:var(--muted); font-size:14px }
-        .cards { list-style:none; padding:0; margin:0; display:grid; gap:14px; grid-template-columns:repeat(1, minmax(0,1fr)); }
-        @media (min-width:520px){ .cards{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
-        @media (min-width:880px){ .cards{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
-        .card{ position:relative; display:flex; gap:12px; align-items:flex-start; padding:14px; border-radius:var(--radius);
-          text-decoration:none; background: radial-gradient(1200px 200px at top right, rgba(var(--glow), .04), transparent 45%), var(--card);
-          border:1px solid var(--line); box-shadow: 0 1px 1px rgba(var(--shadow), .04), 0 8px 16px rgba(var(--shadow), .06);
-          transform: translateZ(0); transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease, background .25s ease;
-          will-change: transform, box-shadow; }
-        .card:hover{ transform: translateY(-2px) scale(1.01);
-          box-shadow: 0 2px 4px rgba(var(--shadow), .08), 0 14px 28px rgba(var(--shadow), .10), 0 24px 48px rgba(var(--glow), .08);
-          border-color: rgba(var(--glow), .35);
-          background: radial-gradient(1000px 160px at top right, rgba(var(--glow), .08), transparent 50%), var(--card); }
-        .card:focus-visible{ outline:none; box-shadow: 0 0 0 2px rgba(var(--ring), .9), 0 10px 22px rgba(var(--shadow), .10) }
-        .icon{ flex:0 0 auto; width:44px; height:44px; border-radius:10px; overflow:hidden; background:linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0)); border:1px solid var(--line); transform:translateZ(0) }
-        .icon img{ width:100%; height:100%; object-fit:cover; opacity:0; animation:fadeIn .3s ease-out forwards; display:block }
-        .meta{ min-width:0 }
-        .name{ color:var(--txt); font-weight:700; font-size:15px; line-height:1.3; letter-spacing:.01em; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-        .desc{ margin:6px 0 0; color:var(--sub); font-size:12px; line-height:1.6; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
-        .host{ margin-top:8px; font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-        .shine{ pointer-events:none; position:absolute; inset:0; border-radius:inherit; background:linear-gradient(135deg, rgba(var(--glow), .0) 40%, rgba(var(--glow), .18) 60%, rgba(var(--glow), .0) 80%); opacity:0; transition:opacity .28s ease; mask: radial-gradient(200px 120px at 95% 5%, #000 20%, transparent 60%) }
-        .card:hover .shine{ opacity:1 }
-        @keyframes fadeIn { to { opacity:1 } }
-        @media (prefers-reduced-motion: reduce){
-          .card, .card:hover { transition:none !important; transform:none !important; box-shadow:none !important }
-          .icon img{ animation:none !important; opacity:1 !important }
-        }
-      `}</style>
-
-      {/* 仅在 /links 隐藏 Notion 正文（当走 LayoutSlug） */}
-      <style jsx global>{`
-        html.__links_hide_notion article .notion,
-        html.__links_hide_notion article .notion-page { display: none !important; }
-      `}</style>
-    </div>
-  )
-}
-
-export default function Links(props) {
-  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
-  if (props.__hasSlug) {
-    if (typeof document !== 'undefined') {
-      document.documentElement.classList.add('__links_hide_notion')
+        throw new Error(`Notion ${res.status}: ${txt}`)
+      }
+      return res.json()
+    } catch (e) {
+      clearTimeout(t)
+      lastErr = e
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 400 * (attempt + 1)))
+        continue
+      }
+      throw lastErr
     }
-    return (
-      <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
-        <LinksBody
-          data={props.items}
-          categories={props.categories}
-          debugInfo={{ __err: props.__err, __dbg: props.__dbg }}
-          envInfo={props.__env}
-        />
-      </DynamicLayout>
-    )
-  }
-  return (
-    <LinksBody
-      data={props.items}
-      categories={props.categories}
-      debugInfo={{ __err: props.__err, __dbg: props.__dbg }}
-      envInfo={props.__env}
-    />
-  )
-}
-
-// ISR + 调试信息透出
-export async function getStaticProps({ locale }) {
-  let base = {}
-  let items = []
-  let categories = []
-  let hasSlug = false
-  let __err = null
-  let __dbg = null
-
-  try {
-    base = await getGlobalData({ from: 'links', locale })
-    const pages = base?.allPages || base?.pages || []
-    hasSlug = Array.isArray(pages) && pages.some(p =>
-      (p?.slug === 'links' || p?.slug?.value === 'links') &&
-      (p?.type === 'Page' || p?.type?.value === 'Page') &&
-      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
-    )
-  } catch (e) {
-    base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
-  }
-
-  try {
-    const r = await getLinksAndCategories({ debug: true })
-    items = r?.items || []
-    categories = r?.categories || []
-    __dbg = r?.__debug || null
-  } catch (e) {
-    __err = e?.message || String(e)
-    items = []
-    categories = []
-  }
-
-  const dbId = process.env.FRIENDS_DB_ID || ''
-  const dbMasked = dbId ? (dbId.slice(0,6) + '...' + dbId.slice(-4)) : '(未设置)'
-  const __env = {
-    hasToken: !!process.env.NOTION_TOKEN,
-    dbMasked,
-    noFilter: String(process.env.FRIENDS_NO_FILTER || '').toLowerCase() === '1',
-    debug:    String(process.env.FRIENDS_DEBUG    || '').toLowerCase() === '1'
-  }
-
-  return {
-    props: { ...base, items, categories, __hasSlug: hasSlug, __err, __dbg, __env },
-    revalidate: 600
   }
 }
+
+const pick = (props, names) => { for (const n of names) if (props?.[n]) return props[n] }
+
+// 读取器（兼容 title / rich_text / url）
+const readTitle = p => (p?.title || []).map(x => x?.plain_text || '').join('').trim()
+const readRich  = p => (p?.rich_text || []).map(x => x?.plain_text || '').join('').trim()
+const readURL   = p => (p?.url || readRich(p) || readTitle(p) || '').trim()
+const readSel   = p => (p?.select?.name || '').trim()
+const readNum   = p => (typeof p?.number === 'number' ? p.number : 0)
+
+const withHttps = u => {
+  if (!u) return ''
+  const s = String(u).trim()
+  if (/^https?:\/\//i.test(s)) return s
+  if (/^\/\//.test(s)) return `https:${s}`
+  return `https://${s.replace(/^\/+/, '')}`
+}
+
+// 头像兜底：Avatar → DuckDuckGo → /favicon.ico
+function resolveAvatar(avatarProp, siteUrl) {
+  const f = avatarProp?.files?.[0]
+  if (f) {
+    if (f.type === 'external' && f.external?.url) return withHttps(f.external.url)
+    if (f.type === 'file' && f.file?.url) return f.file.url
+  }
+  if (avatarProp?.url) return withHttps(avatarProp.url)
+  try {
+    const u = new URL(siteUrl)
+    return `https://icons.duckduckgo.com/ip3/${u.hostname}.ico`
+  } catch {}
+  return '/favicon.ico'
+}
+
+// 生成“发布状态”过滤（status/select），若不可用或被关闭则返回 undefined
+function buildStatusFilter(db, dbg) {
+  if (DISABLE_FILTER) { dbg.filterDisabledByEnv = true; return undefined }
+  const candidateKeys = ['Status', '状态', 'Visible', '发布', 'Published', '公开', '发布状态', '显示']
+  const key = candidateKeys.find(k => db.properties?.[k])
+  dbg.filterKey = key || null
+  if (!key) return undefined
+
+  const prop = db.properties[key]
+  const ALLOW = ['正常','Normal','Published','公开','已发布','显示','可见','Enable','Enabled','On']
+
+  if (prop?.type === 'status') {
+    const options = prop.status?.options?.map(o => o.name) || []
+    const usable  = ALLOW.filter(v => options.includes(v))
+    dbg.filterType = 'status'
+    dbg.filterOptions = options
+    dbg.filterUsable  = usable
+    if (usable.length === 0) return undefined
+    return { or: usable.map(v => ({ property: key, status: { equals: v } })) }
+  }
+  if (prop?.type === 'select') {
+    const options = prop.select?.options?.map(o => o.name) || []
+    const usable  = ALLOW.filter(v => options.includes(v))
+    dbg.filterType = 'select'
+    dbg.filterOptions = options
+    dbg.filterUsable  = usable
+    if (usable.length === 0) return undefined
+    return { or: usable.map(v => ({ property: key, select: { equals: v } })) }
+  }
+  dbg.filterType = prop?.type || 'unknown'
+  return undefined
+}
+
+export async function getLinksAndCategories(opts = {}) {
+  if (!NOTION_TOKEN || !DB_ID) {
+    const err = `Missing env: ${!NOTION_TOKEN ? 'NOTION_TOKEN ' : ''}${!DB_ID ? 'FRIENDS_DB_ID' : ''}`.trim()
+    const e = new Error(err)
+    e.code = 'ENV_MISSING'
+    throw e
+  }
+
+  const debug = { DISABLE_FILTER, NOTION_VERSION }
+  const db = await notion(`/databases/${DB_ID}`)
+  debug.dbHasCategory = !!db.properties?.Category
+  debug.dbTitle = db.title?.[0]?.plain_text || ''
+
+  // 分类选项顺序（有则用）
+  const opt = db.properties?.Category?.select?.options || db.properties?.Category?.multi_select?.options || []
+  const optionOrder = opt.map(o => o.name)
+
+  // 更智能的发布过滤器
+  const safeFilter = buildStatusFilter(db, debug)
+
+  const sorts = []
+  if (db.properties?.Weight) sorts.push({ property: 'Weight', direction: 'descending' })
+  if (db.properties?.Name)   sorts.push({ property: 'Name',   direction: 'ascending'  })
+
+  const pullAll = async (filterOrUndefined) => {
+    const pages = []
+    let start_cursor, has_more = true
+    while (has_more) {
+      const body = { page_size: 100, start_cursor }
+      if (filterOrUndefined) body.filter = filterOrUndefined
+      if (sorts.length) body.sorts = sorts
+      const data = await notion(`/databases/${DB_ID}/query`, { method: 'POST', body: JSON.stringify(body) })
+      pages.push(...data.results)
+      has_more = data.has_more
+      start_cursor = data.next_cursor
+    }
+    return pages
+  }
+
+  let pages = await pullAll(safeFilter)
+  debug.countWithFilter = pages.length
+
+  // 若带过滤为 0，则无过滤再查一次，避免空白页
+  if (safeFilter && pages.length === 0) {
+    debug.fallbackNoFilter = true
+    pages = await pullAll(undefined)
+  }
+  debug.countNoFilter = pages.length
+
+  const items = []
+  for (const page of pages) {
+    const p = page.properties
+    const pName = pick(p, ['Name','名称','标题'])
+    const pURL  = pick(p, ['URL','Url','Link','链接','网址','网站','Homepage','Home','Site'])
+    const pDesc = pick(p, ['Description','描述','简介','Desc'])
+    const pAvat = pick(p, ['Avatar','Icon','图标'])
+    const pLang = pick(p, ['Language','语言'])
+    const pCat  = pick(p, ['Category','分类'])
+    const pW    = pick(p, ['Weight','权重'])
+    const pRSS  = pick(p, ['RSS','Feed'])
+
+    const site = withHttps(readURL(pURL))
+    const avatar = resolveAvatar(pAvat, site)
+
+    const cats = []
+    if (pCat?.multi_select) cats.push(...pCat.multi_select.map(s => s.name))
+    else if (pCat?.select)  cats.push(pCat.select.name)
+
+    items.push({
+      Name: readTitle(pName) || readRich(pName),
+      URL: site,
+      Categories: cats,
+      Description: readRich(pDesc),
+      Avatar: avatar,
+      Language: readSel(pLang),
+      Weight: readNum(pW),
+      RSS: withHttps(readURL(pRSS))
+    })
+  }
+
+  // 分类顺序：按数据库选项顺序 + 使用过的兜底 + 未分类
+  const used = Array.from(new Set(items.flatMap(i => i.Categories || []).filter(Boolean)))
+  let categories = optionOrder.filter(n => used.includes(n))
+  for (const c of used) if (!categories.includes(c)) categories.push(c)
+  if (items.some(i => !i.Categories?.length)) categories = [...categories, '未分类']
+
+  return FRIENDS_DEBUG || opts.debug
+    ? { items, categories, __debug: debug }
+    : { items, categories }
+}
+
+// 同时提供默认导出，避免“不是函数”的导入不匹配问题
+export default getLinksAndCategories
