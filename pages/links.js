@@ -33,32 +33,34 @@ function LinksBody({ data = [], categories = [] }) {
                   gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))'
                 }}>
                   {items.map(it => (
-                    <li key={`${cat}-${it.URL}`} style={{
+                    <li key={`${cat}-${it.URL || it.Name}`} style={{
                       border: '1px solid #e5e7eb', borderRadius: 16, padding: 14
                     }}>
                       <a
-                        href={it.URL}
+                        href={it.URL || '#'}
                         target="_blank"
                         rel="noopener noreferrer nofollow external"
                         style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none' }}
                       >
                         <img
-                          src={it.Avatar}
+                          src={it.Avatar || '/favicon.ico'}
                           alt={it.Name}
                           loading="lazy"
                           style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }}
                           onError={e => {
                             try {
-                              const u = new URL(it.URL)
-                              e.currentTarget.src = `https://icons.duckduckgo.com/ip3/${u.hostname}.ico`
-                            } catch {
-                              e.currentTarget.src = '/favicon.ico'
-                            }
+                              if (it.URL) {
+                                const u = new URL(it.URL)
+                                e.currentTarget.src = `https://icons.duckduckgo.com/ip3/${u.hostname}.ico`
+                                return
+                              }
+                            } catch {}
+                            e.currentTarget.src = '/favicon.ico'
                           }}
                         />
                         <div>
-                          <div style={{ fontWeight: 600 }}>{it.Name}</div>
-                          <div style={{ opacity: .7, fontSize: 12, marginTop: 2 }}>{it.Description}</div>
+                          <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{it.Name}</div>
+                          {it.Description && <div style={{ opacity: .7, fontSize: 12, marginTop: 2 }}>{it.Description}</div>}
                         </div>
                       </a>
                     </li>
