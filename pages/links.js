@@ -169,4 +169,16 @@ export async function getStaticProps({ locale }) {
   }
 
   try {
-    const r = await getLinksAndCategories({ debug
+    const r = await getLinksAndCategories({ debug: true })
+    items = r?.items || []
+    categories = r?.categories || []
+  } catch (e) {
+    items = []
+    categories = []
+  }
+
+  return {
+    props: { ...base, items, categories, __hasSlug: hasSlug },
+    revalidate: 600
+  }
+}
