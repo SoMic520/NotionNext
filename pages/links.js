@@ -8,11 +8,10 @@ import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-/* ---------- 小工具：URL 规范化（去掉尾部标点，补 https://） ---------- */
+/* ---------- URL 规范化：去尾标点 & 补协议 ---------- */
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
-  // 去掉结尾常见中英标点
   s = s.replace(/[)\]\}，。；、？！,.;:]+$/g, '')
   if (!/^https?:\/\//i.test(s)) s = 'https://' + s.replace(/^\/+/, '')
   return s
@@ -36,8 +35,8 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，离鼠标更近一点点） ---------- */
-const MOUSE_GAP = 16 // 与鼠标保持 16px 小间距（原 10px）
+/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，近距离） ---------- */
+const MOUSE_GAP = 16 // 与鼠标保持 16px 间距
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -51,9 +50,9 @@ function computePreviewPlacement(clientX, clientY) {
   ]
   const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
 
-  // “刚好”的上限：避免过大
-  const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520) // 360~520，约 35vw
-  const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420) // 240~420，约 40vh
+  // 尺寸上限：不夸张，刚好
+  const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520) // 360~520
+  const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420) // 240~420
   const w = Math.max(320, Math.min(best.w - m, capW))
   const h = Math.max(220, Math.min(best.h - m, capH))
 
@@ -83,7 +82,6 @@ function LinkCard({ it }) {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
 
-  // 修正后的 URL & host
   const url = normalizeUrl(it.URL)
   const host = safeHost(it.URL)
 
@@ -93,7 +91,7 @@ function LinkCard({ it }) {
   const iconS2   = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : '/favicon.ico'
   const initial  = it.Avatar || iconDuck
 
-  // 预览失败的截图兜底（按预览窗口大小）
+  // 预览失败截图兜底（按预览窗口大小）
   const shot = url ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}` : ''
 
   const openPreview = (e) => {
@@ -133,7 +131,6 @@ function LinkCard({ it }) {
         onMouseMove={movePreview}
         onMouseLeave={closePreview}
       >
-        {/* 左侧统一方块图标 */}
         <div className="icon">
           <img
             src={initial}
@@ -152,7 +149,6 @@ function LinkCard({ it }) {
           />
         </div>
 
-        {/* 文本信息 */}
         <div className="meta">
           <div className="name">{it.Name}</div>
           {it.Description && <p className="desc">{it.Description}</p>}
@@ -167,11 +163,9 @@ function LinkCard({ it }) {
               style={{ left: pv.left, top: pv.top, width: pv.w, height: pv.h }}
               aria-hidden
             >
-              {/* 截图兜底（iframe 成功后淡出） */}
               {shot && (
                 <img className={`shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />
               )}
-              {/* 实时网页 */}
               <iframe
                 className={`frame ${loaded && !failed ? 'show' : ''}`}
                 src={url}
@@ -207,16 +201,16 @@ function LinkCard({ it }) {
           .desc{ margin:4px 0 0; color:var(--sub); font-size:13px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
           .host{ margin-top:6px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 
-          /* 预览窗（通过 Portal 渲染到 body） */
+          /* 预览窗（Portal 到 body） */
           .preview{
             position: fixed;
             z-index: 2147483000;
-            pointer-events: none;           /* 仅预览不交互 */
+            pointer-events: none;
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 18px 48px rgba(0,0,0,.28);
             border: 1px solid var(--ring);
-            background: var(--panelBg);     /* 不透明面板 */
+            background: var(--panelBg);
             opacity: 0;
             transform: translateY(-8px) scale(.985);
             transition:
@@ -314,7 +308,7 @@ function LinksBody({ data = [], categories = [] }) {
         .group-title{ margin:0; font-size:18px; font-weight:700; color:var(--txt) }
         .group-count{ font-size:12px; color:var(--muted) }
 
-        /* 同排宽度一致：固定最小列宽，等分剩余空间 */
+        /* 同排宽度一致 */
         .cards{
           list-style:none; padding:0; margin:0;
           display:grid; gap:14px;
@@ -331,25 +325,27 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* ---------- 页面导出：设置标题“links” ---------- */
-export 默认 function Links(props) {
-  const theme = siteConfig('THEME', BLOG。THEME， props?.NOTION_CONFIG)
-  const siteTitle = siteConfig('TITLE'， BLOG。TITLE， props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
+/* ---------- 页面导出：设置标题“Links”并处理主题外壳 ---------- */
+export default function Links(props) {
+  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
+  const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
   const pageTitle = `${siteTitle} | Links`
+
+  useEffect(() => {
+    if (props.__hasSlug && typeof document !== 'undefined') {
+      document.documentElement.classList.add('__links_hide_notion')
+      return () => document.documentElement.classList.remove('__links_hide_notion')
+    }
+  }, [props.__hasSlug])
+
+  const body = <LinksBody data={props.items} categories={props.categories} />
 
   return (
     <>
       <Head><title>{pageTitle}</title></Head>
-      {props.__hasSlug ? (
-        <>
-          {typeof document !== 'undefined' && document.documentElement.classList。add('__links_hide_notion')}
-          <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
-            <LinksBody data={props。items} categories={props.categories} />
-          </DynamicLayout>
-        </>
-      ) : (
-        <LinksBody data={props.items} categories={props。categories} />
-      )}
+      {props.__hasSlug
+        ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
+        : body}
     </>
   )
 }
