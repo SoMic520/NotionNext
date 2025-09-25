@@ -88,7 +88,6 @@ export default function Links(props) {
 
   // 有 slug=links 的占位页 → 用主题外壳，并隐藏 Notion 正文；否则直接渲染自定义页面
   if (props.__hasSlug) {
-    // 给 html 打标，配合上面的全局样式只在 /links 隐藏 Notion 正文
     if (typeof document !== 'undefined') {
       document.documentElement.classList.add('__links_hide_notion')
     }
@@ -132,6 +131,6 @@ export async function getStaticProps({ locale }) {
 
   return {
     props: { ...base, items, categories, __hasSlug: hasSlug },
-    revalidate: 600 // 10 分钟后台增量刷新
+    revalidate: 600
   }
 }
