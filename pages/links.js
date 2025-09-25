@@ -18,6 +18,26 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
+/* ---------- 简易 hash → 颜色，用于字母兜底图标 ---------- */
+function hashColor(text = '') {
+  let h = 0
+  for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
+  const hue = Math.abs(h) % 360
+  return `hsl(${hue} 70% 45%)`
+}
+function letterAvatarDataURI(label = 'L', bg = '#888') {
+  const txt = (label || 'L').toUpperCase().slice(0, 1)
+  const svg = encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'>
+      <rect width='100%' height='100%' rx='12' ry='12' fill='${bg}'/>
+      <text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle'
+            font-family='system-ui,Segoe UI,Roboto,Helvetica,Arial'
+            font-size='32' fill='white' font-weight='700'>${txt}</text>
+    </svg>`
+  )
+  return `data:image/svg+xml;charset=utf-8,${svg}`
+}
+
 /* ---------- Portal：把预览窗放到 <body>，避免被裁剪/遮挡 ---------- */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
@@ -36,7 +56,7 @@ function PreviewPortal({ children }) {
 }
 
 /* ---------- 计算基于鼠标的最佳预览位置（择最大区域，近距离） ---------- */
-const MOUSE_GAP = 24 // 与鼠标保持 24px 间距
+const MOUSE_GAP = 40 // 与鼠标保持 40px 间距
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -74,6 +94,34 @@ function computePreviewPlacement(clientX, clientY) {
   return { left, top, w, h }
 }
 
+/* ---------- 图标组件：更快兜底（S2 → DuckDuckGo → root）+ 最终字母头像，不再回落到本网站 logo ---------- */
+function SmartIcon({ url, name }) {
+  const host = safeHost(url)
+  const s2   = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : ''
+  const ddg  = host ? `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico` : ''
+  const root = host ? `https://${host}/favicon.ico` : ''
+  const letter = letterAvatarDataURI(host?.[0] || name?.[0] || 'L', hashColor(host || name))
+
+  const [src, setSrc] = useState(s2 || ddg || root || letter)
+  const [step, setStep] = useState(0)
+  return (
+    <img
+      src={src}
+      alt={name}
+      title={host || name}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (step === 0 && ddg) { setSrc(ddg); setStep(1); return }
+        if (step === 1 && root){ setSrc(root); setStep(2); return }
+        if (step <= 2)        { setSrc(letter); setStep(3); return }
+      }}
+      style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
+    />
+  )
+}
+
 /* ---------- 单张卡片：丝滑缩放 + 自适应预览 + 失败截图兜底 ---------- */
 function LinkCard({ it }) {
   const rafRef = useRef(null)
@@ -84,12 +132,6 @@ function LinkCard({ it }) {
 
   const url = normalizeUrl(it.URL)
   const host = safeHost(it.URL)
-
-  // 图标兜底：Avatar → DuckDuckGo → /favicon.ico → Google S2 → 本地
-  const iconDuck = host ? `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico` : '/favicon.ico'
-  const iconRoot = host ? `https://${host}/favicon.ico` : '/favicon.ico'
-  const iconS2   = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : '/favicon.ico'
-  const initial  = it.Avatar || iconDuck
 
   // 预览失败截图兜底（按预览窗口大小）
   const shot = url ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}` : ''
@@ -131,22 +173,8 @@ function LinkCard({ it }) {
         onMouseMove={movePreview}
         onMouseLeave={closePreview}
       >
-        <div className="icon">
-          <img
-            src={initial}
-            alt={it.Name}
-            title={host || it.Name}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            data-fallback="0"
-            onError={e => {
-              const step = Number(e.currentTarget.dataset.fallback || '0')
-              if (step === 0) { e.currentTarget.dataset.fallback = '1'; e.currentTarget.src = iconRoot }
-              else if (step === 1) { e.currentTarget.dataset.fallback = '2'; e.currentTarget.src = iconS2 }
-              else if (step === 2) { e.currentTarget.dataset.fallback = '3'; e.currentTarget.src = '/favicon.ico' }
-            }}
-          />
+        <div className="icon" aria-hidden>
+          <SmartIcon url={url} name={it.Name} />
         </div>
 
         <div className="meta">
@@ -182,24 +210,45 @@ function LinkCard({ it }) {
 
         <style jsx>{`
           li { display:block; height:100% }
+
+          /* —— 卡片层次感：更清晰的标题/副文/附属 —— */
           .card{
-            position:relative; display:flex; gap:12px; align-items:flex-start;
-            height:100%; min-height:96px;
-            padding:14px; border:1px solid var(--box); border-radius:var(--radius);
+            position:relative; display:flex; gap:14px; align-items:flex-start;
+            height:100%; min-height:100px;
+            padding:16px; border:1px solid var(--box); border-radius:14px;
             text-decoration:none; background: transparent;
             transform: translateZ(0) scale(1);
             will-change: transform, box-shadow;
-            transition: transform .32s cubic-bezier(.22,.61,.36,1), box-shadow .32s ease;
+            transition: transform .34s cubic-bezier(.22,.61,.36,1), box-shadow .34s ease, border-color .34s ease;
           }
-          .card:hover{ transform: translateY(-2px) scale(1.016); box-shadow: 0 0 0 1px var(--ring), 0 12px 30px rgba(0,0,0,.10) }
+          .card:hover{
+            transform: translateY(-2px) scale(1.016);
+            border-color: var(--ring);
+            box-shadow: 0 0 0 1px var(--ring), 0 14px 34px rgba(0,0,0,.10);
+          }
 
-          .icon{ flex:0 0 auto; width:44px; height:44px; border-radius:10px; overflow:hidden; border:1px solid var(--box) }
-          .icon img{ width:100%; height:100%; object-fit:cover; display:block }
+          .icon{
+            flex:0 0 auto; width:48px; height:48px;
+            border-radius:12px; overflow:hidden;
+            border:1px solid var(--box);
+            background: #fff;
+          }
+          @media (prefers-color-scheme: dark){ .icon{ background:#0f172a } }
 
-          .meta{ min-width:0 }
-          .name{ color:var(--txt); font-weight:800; font-size:16px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-          .desc{ margin:4px 0 0; color:var(--sub); font-size:13px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
-          .host{ margin-top:6px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+          .meta{ min-width:0; display:flex; flex-direction:column; gap:6px }
+          .name{
+            color:var(--txt); font-weight:900; font-size:17px; line-height:1.25;
+            letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis
+          }
+          .desc{
+            margin:0; color:var(--sub); font-size:13.5px; line-height:1.6;
+            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden
+          }
+          .host{
+            margin-top:2px; font-size:12px; color:var(--muted);
+            letter-spacing:.2px; text-transform:lowercase;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis
+          }
 
           /* 预览窗（Portal 到 body） */
           .preview{
@@ -287,7 +336,7 @@ function LinksBody({ data = [], categories = [] }) {
       <style jsx>{`
         :root{
           --txt:#0b1220; --sub:#334155; --muted:#64748b;
-          --box:#cfd6e3; --ring:#7aa2ff; --radius:12px;
+          --box:#cfd6e3; --ring:#7aa2ff; --radius:14px;
           --panelBg:#ffffff;
         }
         @media (prefers-color-scheme: dark){
@@ -297,15 +346,23 @@ function LinksBody({ data = [], categories = [] }) {
           }
         }
 
-        .wrap{ max-width:1100px; margin:0 auto; padding:28px 16px 56px; }
-        .hd h1{ margin:0; font-size:28px; font-weight:800; color:var(--txt) }
-        .hd p{ margin:8px 0 0; font-size:14px; color:var(--muted) }
+        .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px; }
+        .hd h1{
+          margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt)
+        }
+        .hd p{ margin:10px 0 0; font-size:14px; color:var(--muted) }
 
-        .empty{ margin-top:16px; padding:18px; border:1px dashed var(--box); border-radius:var(--radius); color:var(--muted); text-align:center }
+        .empty{
+          margin-top:16px; padding:20px;
+          border:1px dashed var(--box); border-radius:var(--radius);
+          color:var(--muted); text-align:center
+        }
 
-        .groups{ display:flex; flex-direction:column; gap:28px; margin-top:12px }
-        .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px }
-        .group-title{ margin:0; font-size:18px; font-weight:700; color:var(--txt) }
+        .groups{ display:flex; flex-direction:column; gap:30px; margin-top:14px }
+        .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px }
+        .group-title{
+          margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px
+        }
         .group-count{ font-size:12px; color:var(--muted) }
 
         /* 同排宽度一致 */
@@ -315,7 +372,10 @@ function LinksBody({ data = [], categories = [] }) {
           grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
           align-items: stretch;
         }
-        .group-empty{ border:1px solid var(--box); border-radius:var(--radius); padding:12px 14px; color:var(--muted); font-size:14px }
+        .group-empty{
+          border:1px solid var(--box); border-radius:var(--radius);
+          padding:12px 14px; color:var(--muted); font-size:14px
+        }
 
         /* 隐藏 /links 的 Notion 原文（主题外壳时） */
         :global(html.__links_hide_notion article .notion),
@@ -325,7 +385,7 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* ---------- 页面导出：设置标题“Links”并处理主题外壳 ---------- */
+/* ---------- 页面导出：设置标题“Links”并预连接图标域名，提升图标加载速度 ---------- */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
@@ -342,7 +402,13 @@ export default function Links(props) {
 
   return (
     <>
-      <Head><title>{pageTitle}</title></Head>
+      <Head>
+        <title>{pageTitle}</title>
+        {/* 提前建链，加速图标/截图加载 */}
+        <link rel="preconnect" href="https://www.google.com" crossOrigin="" />
+        <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
+        <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
+      </Head>
       {props.__hasSlug
         ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
         : body}
