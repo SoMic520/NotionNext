@@ -3,18 +3,58 @@ import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
-import getLinksAndCategories from '@/lib/links' // 默认导入最稳
+import getLinksAndCategories from '@/lib/links'
 import { useRef, useState } from 'react'
 
 function safeHost(u) { try { return new URL(u).hostname.toLowerCase() } catch { return '' } }
 
-/** 单个卡片组件：负责自适应预览位置 & 预览失败截图兜底 */
+/** 计算基于鼠标的最佳预览位置与尺寸（选择面积最大的一侧） */
+function computePreviewPlacement(clientX, clientY) {
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+  const m = 12 // 边距
+  // 四个方向可用矩形
+  const areas = [
+    { side: 'right', w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
+    { side: 'left',  w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
+    { side: 'bottom',w: Math.max(0, vw - 2 * m),       h: Math.max(0, vh - clientY - m) },
+    { side: 'top',   w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
+  ]
+  const best = areas.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0] || areas[0]
+
+  // 尺寸上限（避免过大）：按视口比例取“舒适值”，再不超过该侧可用面积
+  const capW = Math.min(Math.max(Math.floor(vw * 0.40), 420), 720) // 约 40% 视口，420~720
+  const capH = Math.min(Math.max(Math.floor(vh * 0.36), 260), 440) // 约 36% 视口，260~440
+  const w = Math.max(260, Math.min(best.w - m, capW))
+  const h = Math.max(200, Math.min(best.h - m, capH))
+
+  // 坐标：围绕鼠标就近摆放，同时保证不越界
+  let left = m, top = m
+  if (best.side === 'right') {
+    left = Math.min(clientX + m, vw - w - m)
+    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
+  } else if (best.side === 'left') {
+    left = Math.max(clientX - w - m, m)
+    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
+  } else if (best.side === 'bottom') {
+    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
+    top  = Math.min(clientY + m, vh - h - m)
+  } else { // top
+    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
+    top  = Math.max(clientY - h - m, m)
+  }
+
+  return { left, top, w, h }
+}
+
+/** 单张卡片（含：丝滑缩放 + 自适应预览 + 失败截图兜底） */
 function LinkCard({ it }) {
   const aRef = useRef(null)
-  const [pv, setPv] = useState({ left: 0, top: 0, w: 640, h: 400 })
-  const [loaded, setLoaded] = useState(false)   // iframe 是否成功加载
-  const [failed, setFailed] = useState(false)   // 认为被站点限制，显示截图
-  const timerRef = useRef(null)
+  const rafRef = useRef(null)
+  const failTimerRef = useRef(null)
+  const [pv, setPv] = useState({ left: 0, top: 0, w: 560, h: 340, visible: false })
+  const [loaded, setLoaded] = useState(false)
+  const [failed, setFailed] = useState(false)
 
   const host = it.URL ? safeHost(it.URL) : ''
   // 图标兜底：Avatar → DuckDuckGo → /favicon.ico → Google S2 → 本地
@@ -23,59 +63,42 @@ function LinkCard({ it }) {
   const iconS2   = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : '/favicon.ico'
   const initial  = it.Avatar || iconDuck
 
-  // 进入时计算最佳位置 + 启动兜底计时器
-  const onEnter = () => {
-    if (!aRef.current || typeof window === 'undefined') return
-    const rect = aRef.current.getBoundingClientRect()
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const margin = 12
-
-    // 自适应尺寸（更大，但不超过视口）
-    const w = Math.min(860, Math.max(520, Math.floor(vw * 0.58)))
-    const h = Math.min(520, Math.max(300, Math.floor(vh * 0.5)))
-
-    // 优先右侧 → 左侧 → 下方 → 上方
-    let left = rect.right + margin
-    let top  = rect.top
-    let pos  = 'right'
-    if (left + w > vw - margin) {
-      // 尝试左侧
-      const tryLeft = rect.left - w - margin
-      if (tryLeft >= margin) { left = tryLeft; pos = 'left' }
-      else {
-        // 尝试下方
-        const tryBottom = rect.bottom + margin
-        if (tryBottom + h <= vh - margin) { left = Math.min(rect.left, vw - w - margin); top = tryBottom; pos = 'bottom' }
-        else {
-          // 放上方
-          left = Math.min(rect.left, vw - w - margin); top = rect.top - h - margin; pos = 'top'
-        }
-      }
-    }
-    // 垂直方向防越界
-    top = Math.max(margin, Math.min(top, vh - h - margin))
-    left = Math.max(margin, Math.min(left, vw - w - margin))
-
-    setPv({ left, top, w, h })
-
-    // 启动“预览受限”兜底：若 2200ms 内未标记 loaded，则认为失败，显示截图
-    setLoaded(false)
-    setFailed(false)
-    clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      if (!loaded) setFailed(true)
-    }, 2200)
-  }
-
-  const onLeave = () => {
-    clearTimeout(timerRef.current)
-  }
-
-  // mShots 截图服务（无 Key）：以预览窗口大小生成缩略图
   const shot = it.URL
     ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(it.URL)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}`
     : ''
+
+  const openPreview = (e) => {
+    if (!it.URL) return
+    // 初次进入：计算一次并显示（带一点延迟更“丝滑”）
+    const { clientX, clientY } = e
+    setPv(prev => ({ ...computePreviewPlacement(clientX, clientY), visible: true }))
+    setLoaded(false)
+    setFailed(false)
+    clearTimeout(failTimerRef.current)
+    // 2.4s 内没 onLoad 认为受限 → 截图兜底
+    failTimerRef.current = setTimeout(() => {
+      setFailed(prev => prev || !loaded)
+    }, 2400)
+  }
+
+  const movePreview = (e) => {
+    if (!pv.visible || !it.URL) return
+    cancelAnimationFrame(rafRef.current)
+    const { clientX, clientY } = e
+    // rAF 节流，避免抖动；移动时缓缓跟随
+    rafRef.current = requestAnimationFrame(() => {
+      setPv(prev => {
+        const pos = computePreviewPlacement(clientX, clientY)
+        return { ...prev, ...pos, visible: true }
+      })
+    })
+  }
+
+  const closePreview = () => {
+    cancelAnimationFrame(rafRef.current)
+    clearTimeout(failTimerRef.current)
+    setPv(prev => ({ ...prev, visible: false }))
+  }
 
   return (
     <li>
@@ -86,9 +109,11 @@ function LinkCard({ it }) {
         target="_blank"
         rel="noopener noreferrer nofollow external"
         aria-label={it.Name}
-        onMouseEnter={onEnter}
-        onMouseLeave={onLeave}
+        onMouseEnter={openPreview}
+        onMouseMove={movePreview}
+        onMouseLeave={closePreview}
       >
+        {/* 左侧统一尺寸的小图标 */}
         <div className="icon">
           <img
             src={initial}
@@ -108,20 +133,21 @@ function LinkCard({ it }) {
           />
         </div>
 
+        {/* 文本信息 */}
         <div className="meta">
           <div className="name">{it.Name}</div>
           {it.Description && <p className="desc">{it.Description}</p>}
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 固定定位的大预览窗：靠右优先，自动回避遮挡；移动端隐藏 */}
+        {/* 固定定位的预览窗：围绕鼠标，择最大区域显示；小屏隐藏 */}
         {it.URL && (
           <div
-            className="preview"
+            className={`preview ${pv.visible ? 'visible' : ''}`}
             style={{ left: pv.left, top: pv.top, width: pv.w, height: pv.h }}
             aria-hidden
           >
-            {/* 截图兜底层（默认显示；iframe 成功后淡出） */}
+            {/* 截图兜底（iframe 成功后自动淡出） */}
             {shot && (
               <img
                 className={`shot ${loaded && !failed ? 'hide' : ''}`}
@@ -132,8 +158,7 @@ function LinkCard({ it }) {
                 decoding="async"
               />
             )}
-
-            {/* 实时网页 iframe（成功后覆盖截图） */}
+            {/* 实时网页 */}
             <iframe
               className={`frame ${loaded && !failed ? 'show' : ''}`}
               src={it.URL}
@@ -141,80 +166,76 @@ function LinkCard({ it }) {
               loading="lazy"
               referrerPolicy="no-referrer"
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-pointer-lock allow-modals"
-              onLoad={() => { setLoaded(true); clearTimeout(timerRef.current) }}
+              onLoad={() => { setLoaded(true); clearTimeout(failTimerRef.current) }}
             />
-
-            {/* 预览受限提示（当 failed=true 时显示） */}
-            {failed && (
-              <div className="limited">该站点禁止内嵌预览，已显示截图。点击卡片访问完整页面。</div>
-            )}
+            {failed && <div className="limited">该站点禁止内嵌预览，已显示截图。点击卡片访问完整页面。</div>}
           </div>
         )}
+
+        <style jsx>{`
+          li { display:block; height:100% }
+          .card{
+            position:relative; display:flex; gap:12px; align-items:flex-start;
+            height:100%; min-height: 96px;
+            padding:14px; border:1px solid var(--box); border-radius:var(--radius);
+            text-decoration:none; background: transparent;
+            transform: translateZ(0) scale(1);
+            will-change: transform, box-shadow;
+            transition: transform .30s cubic-bezier(.22,.61,.36,1), box-shadow .30s ease;
+          }
+          .card:hover{ transform: translateY(-2px) scale(1.018); box-shadow: 0 0 0 1px var(--ring), 0 12px 32px rgba(0,0,0,.10) }
+
+          .icon{ flex:0 0 auto; width:44px; height:44px; border-radius:10px; overflow:hidden; border:1px solid var(--box) }
+          .icon img{ width:100%; height:100%; object-fit:cover; display:block }
+
+          .meta{ min-width:0 }
+          .name{ color:var(--txt); font-weight:800; font-size:16px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+          .desc{ margin:4px 0 0; color:var(--sub); font-size:13px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+          .host{ margin-top:6px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+
+          /* —— 预览窗：fixed 定位，围绕鼠标选择最大区域；更“丝滑”的动效 —— */
+          .preview{
+            position: fixed;
+            z-index: 60;
+            pointer-events: none; /* 仅预览不交互（如需可打开） */
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 18px 48px rgba(0,0,0,.28);
+            border: 1px solid var(--ring);
+            backdrop-filter: blur(8px) saturate(130%);
+            isolation: isolate;
+            display: none; /* 小屏隐藏 */
+            opacity: 0;
+            transform: translateY(-8px) scale(.985);
+            transition:
+              left .34s cubic-bezier(.22,.61,.36,1),
+              top .34s cubic-bezier(.22,.61,.36,1),
+              width .34s cubic-bezier(.22,.61,.36,1),
+              height .34s cubic-bezier(.22,.61,.36,1),
+              opacity .34s ease,
+              transform .34s cubic-bezier(.22,.61,.36,1);
+          }
+          @media (min-width: 900px){
+            .preview{ display:block }
+            .preview.visible{ opacity:1; transform: translateY(-2px) scale(1) }
+          }
+
+          .frame, .shot{
+            position:absolute; inset:0; width:100%; height:100%; border:0; display:block;
+            background:#0b1220; object-fit: cover;
+            transition: opacity .32s ease;
+          }
+          .shot.hide{ opacity:0 }
+          .frame{ opacity:0 }
+          .frame.show{ opacity:1 }
+
+          .limited{
+            position:absolute; left:0; right:0; bottom:0;
+            padding: 6px 10px; font-size: 12px; color:#e5e7eb;
+            background: linear-gradient(to top, rgba(11,18,32,.9), rgba(11,18,32,.0));
+          }
+        `}</style>
       </a>
-
-      <style jsx>{`
-        li { display:block; height:100% }
-        .card{
-          position:relative; display:flex; gap:12px; align-items:flex-start;
-          height:100%;
-          padding:14px; border:1px solid var(--box); border-radius:var(--radius);
-          text-decoration:none; background: transparent;
-          transform: translateZ(0) scale(1); will-change: transform, box-shadow;
-          transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease;
-          min-height: 96px;
-        }
-        .card:hover{
-          transform: translateY(-1px) scale(1.015);
-          box-shadow: 0 0 0 1px var(--ring), 0 10px 28px rgba(0,0,0,.10);
-        }
-        .icon{
-          flex:0 0 auto; width:44px; height:44px; border-radius:10px; overflow:hidden;
-          border:1px solid var(--box);
-        }
-        .icon img{ width:100%; height:100%; object-fit:cover; display:block }
-
-        .meta{ min-width:0 }
-        .name{ color:var(--txt); font-weight:800; font-size:16px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-        .desc{ margin:4px 0 0; color:var(--sub); font-size:13px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
-        .host{ margin-top:6px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-
-        /* —— 预览窗（fixed 定位，自适应位置 & 尺寸） —— */
-        .preview{
-          position: fixed;
-          z-index: 60;
-          pointer-events: none; /* 只预览，不交互 */
-          border-radius: 14px;
-          overflow: hidden;
-          box-shadow: 0 18px 48px rgba(0,0,0,.28);
-          border: 1px solid var(--ring);
-          backdrop-filter: blur(8px) saturate(130%);
-          isolation: isolate;
-          display: none; /* 移动端默认隐藏 */
-          opacity: 0;
-          transform: translateY(-6px) scale(.985);
-          transition: opacity .18s ease, transform .18s ease;
-        }
-        /* 仅大屏启用预览，并在 hover 时显现 */
-        @media (min-width: 900px){
-          .card:hover .preview{ display:block; opacity: 1; transform: translateY(-10px) scale(1) }
-        }
-
-        .frame, .shot{
-          position:absolute; inset:0; width:100%; height:100%; border:0; display:block;
-          background:#0b1220; object-fit: cover;
-          transition: opacity .18s ease;
-        }
-        .shot.hide{ opacity:0; }
-        .frame{ opacity:0 }
-        .frame.show{ opacity:1 }
-
-        .limited{
-          position:absolute; left:0; right:0; bottom:0;
-          padding: 6px 10px;
-          font-size: 12px; color:#e5e7eb;
-          background: linear-gradient(to top, rgba(11,18,32,.9), rgba(11,18,32,.0));
-        }
-      `}</style>
     </li>
   )
 }
@@ -231,7 +252,7 @@ function LinksBody({ data = [], categories = [] }) {
     <div className="wrap">
       <header className="hd">
         <h1>友情链接</h1>
-        <p>悬停卡片预览网页，点击新标签打开。</p>
+        <p>悬停卡片显示网页预览，点击新标签打开。</p>
       </header>
 
       {(!data || data.length === 0) ? (
@@ -277,7 +298,7 @@ function LinksBody({ data = [], categories = [] }) {
         .group-title{ margin:0; font-size:18px; font-weight:700; color:var(--txt) }
         .group-count{ font-size:12px; color:var(--muted) }
 
-        /* 同排宽度一致：固定最小列宽，等分剩余空间 */
+        /* 同排宽度一致：固定最小列宽、其余等分 */
         .cards{
           list-style:none; padding:0; margin:0;
           display:grid; gap:14px;
