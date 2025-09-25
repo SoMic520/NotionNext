@@ -1,12 +1,12 @@
-// /pages/links.js  （若是 src 结构：/src/pages/links.js）
-import { getLinksAndCategories } from '../lib/links' // 没有 @ 别名，用相对路径更稳
+// /pages/links.js  （如果你的工程没有 @ 别名，用相对路径更稳）
+import { getLinksAndCategories } from '../lib/links'
 
 function LinksBody({ data = [], categories = [] }) {
   const groups = (categories || []).map(cat => ({
     cat,
     items: (data || [])
-      .filter(x => (cat === '未分类' ? !x.Categories?.length : x.Categories?.includes(cat)))
-      .sort((a,b)=> (b.Weight||0)-(a.Weight||0) || a.Name.localeCompare(b.Name))
+      。filter(x => (cat === '未分类' ? !x。Categories?.length : x。Categories?.includes(cat)))
+      。sort((a,b)=> (b.Weight||0)-(a.Weight||0) || a.Name.localeCompare(b.Name))
   }))
 
   return (
@@ -35,10 +35,10 @@ function LinksBody({ data = [], categories = [] }) {
                         target="_blank"
                         rel="noopener noreferrer nofollow external"
                         style={{display:'flex', alignItems:'center', gap:12, textDecoration:'none', cursor:'pointer'}}
-                        onClick={e => e.stopPropagation()}  // ✅ 防主题内路由劫持，确保真正跳外站
+                        onClick={e => e.stopPropagation()}  // ✅ 防主题路由劫持
                       >
                         <img
-                          src={it.Logo || it.Avatar}       // ✅ 优先用服务端准备好的 Logo
+                          src={it.Logo || it.Avatar}       // ✅ 先用服务端准备好的 Logo
                           alt={it.Name}
                           loading="lazy"
                           style={{width:40, height:40, borderRadius:8, objectFit:'cover'}}
@@ -72,13 +72,12 @@ export default function LinksPage(props){
   return <LinksBody data={props.items} categories={props.categories} />
 }
 
-// ISR：首个请求生成静态页；之后 CDN 直出；后台定时刷新
 export async function getStaticProps(){
   try{
     const { items, categories } = await getLinksAndCategories()
     return { props: { items, categories }, revalidate: 600 }
   }catch(e){
-    // 取数失败也要能渲染（页面不报错），Logo/跳转逻辑在前端兜底
+    // 拉取失败也能渲染，避免构建/运行报错
     return { props: { items: [], categories: [] }, revalidate: 300 }
   }
 }
