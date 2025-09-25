@@ -36,7 +36,7 @@ function PreviewPortal({ children }) {
 }
 
 /* ---------- 计算基于鼠标的最佳预览位置（择最大区域，近距离） ---------- */
-const MOUSE_GAP = 16 // 与鼠标保持 16px 间距
+const MOUSE_GAP = 24 // 与鼠标保持 24px 间距
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
