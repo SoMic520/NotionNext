@@ -1,4 +1,5 @@
 // /pages/links.js
+import Head from 'next/head'
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
@@ -12,7 +13,7 @@ function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
   // 去掉结尾常见中英标点
-  s = s.replace(/[)\]\}，。；；；、？！,.;:]+$/g, '')
+  s = s.replace(/[)\]\}，。；、？！,.;:]+$/g, '')
   if (!/^https?:\/\//i.test(s)) s = 'https://' + s.replace(/^\/+/, '')
   return s
 }
@@ -35,11 +36,12 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，离鼠标更近） ---------- */
+/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，离鼠标更近一点点） ---------- */
+const MOUSE_GAP = 12 // 与鼠标保持 12px 小间距（原 10px）
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-  const m = 10 // 离鼠标的最小间距
+  const m = MOUSE_GAP
 
   const candidates = [
     { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
@@ -49,7 +51,7 @@ function computePreviewPlacement(clientX, clientY) {
   ]
   const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
 
-  // “刚好”的上限：不透明面板，避免太大
+  // “刚好”的上限：避免过大
   const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520) // 360~520，约 35vw
   const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420) // 240~420，约 40vh
   const w = Math.max(320, Math.min(best.w - m, capW))
@@ -208,8 +210,8 @@ function LinkCard({ it }) {
           /* 预览窗（通过 Portal 渲染到 body） */
           .preview{
             position: fixed;
-            z-index: 2147483000;            /* 最高层，防遮挡 */
-            pointer-events: none;           /* 仅预览，不交互 */
+            z-index: 2147483000;
+            pointer-events: none;           /* 仅预览不交互 */
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 18px 48px rgba(0,0,0,.28);
@@ -292,7 +294,7 @@ function LinksBody({ data = [], categories = [] }) {
         :root{
           --txt:#0b1220; --sub:#334155; --muted:#64748b;
           --box:#cfd6e3; --ring:#7aa2ff; --radius:12px;
-          --panelBg:#ffffff;                /* 预览面板（不透明） */
+          --panelBg:#ffffff;
         }
         @media (prefers-color-scheme: dark){
           :root{
@@ -329,18 +331,27 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* ---------- 页面导出 ---------- */
+/* ---------- 页面导出：设置标题“links” ---------- */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
-  if (props.__hasSlug) {
-    if (typeof document !== 'undefined') document.documentElement.classList.add('__links_hide_notion')
-    return (
-      <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
+  const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
+  const pageTitle = `${siteTitle} | links`
+
+  return (
+    <>
+      <Head><title>{pageTitle}</title></Head>
+      {props.__hasSlug ? (
+        <>
+          {typeof document !== 'undefined' && document.documentElement.classList.add('__links_hide_notion')}
+          <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
+            <LinksBody data={props.items} categories={props.categories} />
+          </DynamicLayout>
+        </>
+      ) : (
         <LinksBody data={props.items} categories={props.categories} />
-      </DynamicLayout>
-    )
-  }
-  return <LinksBody data={props.items} categories={props.categories} />
+      )}
+    </>
+  )
 }
 
 /* ---------- ISR & 占位页探测 ---------- */
