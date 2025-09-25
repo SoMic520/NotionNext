@@ -4,31 +4,57 @@ import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
 import getLinksAndCategories from '@/lib/links'
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
-function safeHost(u) { try { return new URL(u).hostname.toLowerCase() } catch { return '' } }
+/* ---------- 小工具：URL 规范化（去掉尾部标点，补 https://） ---------- */
+function normalizeUrl(u) {
+  if (!u) return ''
+  let s = String(u).trim()
+  // 去掉结尾常见中英标点
+  s = s.replace(/[)\]\}，。；；；、？！,.;:]+$/g, '')
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s.replace(/^\/+/, '')
+  return s
+}
+function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/** 计算基于鼠标的最佳预览位置与尺寸（选择面积最大的一侧） */
+/* ---------- Portal：把预览窗放到 <body>，避免被裁剪/遮挡 ---------- */
+function PreviewPortal({ children }) {
+  const [mounted, setMounted] = useState(false)
+  const elRef = useRef(null)
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const el = document.createElement('div')
+    el.id = 'links-preview-root'
+    document.body.appendChild(el)
+    elRef.current = el
+    setMounted(true)
+    return () => { try { document.body.removeChild(el) } catch {} }
+  }, [])
+  if (!mounted || !elRef.current) return null
+  return createPortal(children, elRef.current)
+}
+
+/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，离鼠标更近） ---------- */
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
-  const m = 12 // 边距
-  // 四个方向可用矩形
-  const areas = [
-    { side: 'right', w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
-    { side: 'left',  w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
-    { side: 'bottom',w: Math.max(0, vw - 2 * m),       h: Math.max(0, vh - clientY - m) },
-    { side: 'top',   w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
+  const m = 10 // 离鼠标的最小间距
+
+  const candidates = [
+    { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
+    { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
+    { side: 'bottom', w: Math.max(0, vw - 2 * m),       h: Math.max(0, vh - clientY - m) },
+    { side: 'top',    w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
   ]
-  const best = areas.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0] || areas[0]
+  const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
 
-  // 尺寸上限（避免过大）：按视口比例取“舒适值”，再不超过该侧可用面积
-  const capW = Math.min(Math.max(Math.floor(vw * 0.40), 420), 720) // 约 40% 视口，420~720
-  const capH = Math.min(Math.max(Math.floor(vh * 0.36), 260), 440) // 约 36% 视口，260~440
-  const w = Math.max(260, Math.min(best.w - m, capW))
-  const h = Math.max(200, Math.min(best.h - m, capH))
+  // “刚好”的上限：不透明面板，避免太大
+  const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520) // 360~520，约 35vw
+  const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420) // 240~420，约 40vh
+  const w = Math.max(320, Math.min(best.w - m, capW))
+  const h = Math.max(220, Math.min(best.h - m, capH))
 
-  // 坐标：围绕鼠标就近摆放，同时保证不越界
   let left = m, top = m
   if (best.side === 'right') {
     left = Math.min(clientX + m, vw - w - m)
@@ -47,53 +73,46 @@ function computePreviewPlacement(clientX, clientY) {
   return { left, top, w, h }
 }
 
-/** 单张卡片（含：丝滑缩放 + 自适应预览 + 失败截图兜底） */
+/* ---------- 单张卡片：丝滑缩放 + 自适应预览 + 失败截图兜底 ---------- */
 function LinkCard({ it }) {
-  const aRef = useRef(null)
   const rafRef = useRef(null)
   const failTimerRef = useRef(null)
-  const [pv, setPv] = useState({ left: 0, top: 0, w: 560, h: 340, visible: false })
+  const [pv, setPv] = useState({ left: 0, top: 0, w: 480, h: 320, visible: false })
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
 
-  const host = it.URL ? safeHost(it.URL) : ''
+  // 修正后的 URL & host
+  const url = normalizeUrl(it.URL)
+  const host = safeHost(it.URL)
+
   // 图标兜底：Avatar → DuckDuckGo → /favicon.ico → Google S2 → 本地
   const iconDuck = host ? `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico` : '/favicon.ico'
   const iconRoot = host ? `https://${host}/favicon.ico` : '/favicon.ico'
   const iconS2   = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : '/favicon.ico'
   const initial  = it.Avatar || iconDuck
 
-  const shot = it.URL
-    ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(it.URL)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}`
-    : ''
+  // 预览失败的截图兜底（按预览窗口大小）
+  const shot = url ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}` : ''
 
   const openPreview = (e) => {
-    if (!it.URL) return
-    // 初次进入：计算一次并显示（带一点延迟更“丝滑”）
+    if (!url) return
     const { clientX, clientY } = e
     setPv(prev => ({ ...computePreviewPlacement(clientX, clientY), visible: true }))
-    setLoaded(false)
-    setFailed(false)
+    setLoaded(false); setFailed(false)
     clearTimeout(failTimerRef.current)
-    // 2.4s 内没 onLoad 认为受限 → 截图兜底
+    // 1.9s 内未 onLoad → 认为受限，切换截图
     failTimerRef.current = setTimeout(() => {
       setFailed(prev => prev || !loaded)
-    }, 2400)
+    }, 1900)
   }
-
   const movePreview = (e) => {
-    if (!pv.visible || !it.URL) return
+    if (!pv.visible || !url) return
     cancelAnimationFrame(rafRef.current)
     const { clientX, clientY } = e
-    // rAF 节流，避免抖动；移动时缓缓跟随
     rafRef.current = requestAnimationFrame(() => {
-      setPv(prev => {
-        const pos = computePreviewPlacement(clientX, clientY)
-        return { ...prev, ...pos, visible: true }
-      })
+      setPv(prev => ({ ...prev, ...computePreviewPlacement(clientX, clientY), visible: true }))
     })
   }
-
   const closePreview = () => {
     cancelAnimationFrame(rafRef.current)
     clearTimeout(failTimerRef.current)
@@ -103,9 +122,8 @@ function LinkCard({ it }) {
   return (
     <li>
       <a
-        ref={aRef}
         className="card"
-        href={it.URL || '#'}
+        href={url || '#'}
         target="_blank"
         rel="noopener noreferrer nofollow external"
         aria-label={it.Name}
@@ -113,7 +131,7 @@ function LinkCard({ it }) {
         onMouseMove={movePreview}
         onMouseLeave={closePreview}
       >
-        {/* 左侧统一尺寸的小图标 */}
+        {/* 左侧统一方块图标 */}
         <div className="icon">
           <img
             src={initial}
@@ -122,7 +140,6 @@ function LinkCard({ it }) {
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             data-fallback="0"
             onError={e => {
               const step = Number(e.currentTarget.dataset.fallback || '0')
@@ -140,50 +157,45 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 固定定位的预览窗：围绕鼠标，择最大区域显示；小屏隐藏 */}
-        {it.URL && (
-          <div
-            className={`preview ${pv.visible ? 'visible' : ''}`}
-            style={{ left: pv.left, top: pv.top, width: pv.w, height: pv.h }}
-            aria-hidden
-          >
-            {/* 截图兜底（iframe 成功后自动淡出） */}
-            {shot && (
-              <img
-                className={`shot ${loaded && !failed ? 'hide' : ''}`}
-                src={shot}
-                alt=""
-                aria-hidden
+        {/* 通过 Portal 渲染的预览窗：绝不被裁剪/遮挡 */}
+        {url && (
+          <PreviewPortal>
+            <div
+              className={`preview ${pv.visible ? 'visible' : ''}`}
+              style={{ left: pv.left, top: pv.top, width: pv.w, height: pv.h }}
+              aria-hidden
+            >
+              {/* 截图兜底（iframe 成功后淡出） */}
+              {shot && (
+                <img className={`shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />
+              )}
+              {/* 实时网页 */}
+              <iframe
+                className={`frame ${loaded && !failed ? 'show' : ''}`}
+                src={url}
+                title={it.Name}
                 loading="lazy"
-                decoding="async"
+                referrerPolicy="no-referrer"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-pointer-lock allow-modals"
+                onLoad={() => { setLoaded(true); clearTimeout(failTimerRef.current) }}
               />
-            )}
-            {/* 实时网页 */}
-            <iframe
-              className={`frame ${loaded && !failed ? 'show' : ''}`}
-              src={it.URL}
-              title={it.Name}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-pointer-lock allow-modals"
-              onLoad={() => { setLoaded(true); clearTimeout(failTimerRef.current) }}
-            />
-            {failed && <div className="limited">该站点禁止内嵌预览，已显示截图。点击卡片访问完整页面。</div>}
-          </div>
+              {failed && <div className="limited">该站点禁止内嵌预览，已显示截图。点击卡片访问完整页面。</div>}
+            </div>
+          </PreviewPortal>
         )}
 
         <style jsx>{`
           li { display:block; height:100% }
           .card{
             position:relative; display:flex; gap:12px; align-items:flex-start;
-            height:100%; min-height: 96px;
+            height:100%; min-height:96px;
             padding:14px; border:1px solid var(--box); border-radius:var(--radius);
             text-decoration:none; background: transparent;
             transform: translateZ(0) scale(1);
             will-change: transform, box-shadow;
-            transition: transform .30s cubic-bezier(.22,.61,.36,1), box-shadow .30s ease;
+            transition: transform .32s cubic-bezier(.22,.61,.36,1), box-shadow .32s ease;
           }
-          .card:hover{ transform: translateY(-2px) scale(1.018); box-shadow: 0 0 0 1px var(--ring), 0 12px 32px rgba(0,0,0,.10) }
+          .card:hover{ transform: translateY(-2px) scale(1.016); box-shadow: 0 0 0 1px var(--ring), 0 12px 30px rgba(0,0,0,.10) }
 
           .icon{ flex:0 0 auto; width:44px; height:44px; border-radius:10px; overflow:hidden; border:1px solid var(--box) }
           .icon img{ width:100%; height:100%; object-fit:cover; display:block }
@@ -193,41 +205,38 @@ function LinkCard({ it }) {
           .desc{ margin:4px 0 0; color:var(--sub); font-size:13px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
           .host{ margin-top:6px; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 
-          /* —— 预览窗：fixed 定位，围绕鼠标选择最大区域；更“丝滑”的动效 —— */
+          /* 预览窗（通过 Portal 渲染到 body） */
           .preview{
             position: fixed;
-            z-index: 60;
-            pointer-events: none; /* 仅预览不交互（如需可打开） */
-            border-radius: 14px;
+            z-index: 2147483000;            /* 最高层，防遮挡 */
+            pointer-events: none;           /* 仅预览，不交互 */
+            border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 18px 48px rgba(0,0,0,.28);
             border: 1px solid var(--ring);
-            backdrop-filter: blur(8px) saturate(130%);
-            isolation: isolate;
-            display: none; /* 小屏隐藏 */
+            background: var(--panelBg);     /* 不透明面板 */
             opacity: 0;
             transform: translateY(-8px) scale(.985);
             transition:
-              left .34s cubic-bezier(.22,.61,.36,1),
-              top .34s cubic-bezier(.22,.61,.36,1),
-              width .34s cubic-bezier(.22,.61,.36,1),
-              height .34s cubic-bezier(.22,.61,.36,1),
-              opacity .34s ease,
-              transform .34s cubic-bezier(.22,.61,.36,1);
+              left .36s cubic-bezier(.22,.61,.36,1),
+              top .36s cubic-bezier(.22,.61,.36,1),
+              width .36s cubic-bezier(.22,.61,.36,1),
+              height .36s cubic-bezier(.22,.61,.36,1),
+              opacity .36s ease,
+              transform .36s cubic-bezier(.22,.61,.36,1);
+            display: none;
           }
-          @media (min-width: 900px){
-            .preview{ display:block }
-            .preview.visible{ opacity:1; transform: translateY(-2px) scale(1) }
-          }
+          @media (min-width: 900px){ .preview{ display:block } }
+          .preview.visible{ opacity:1; transform: translateY(-2px) scale(1) }
 
           .frame, .shot{
             position:absolute; inset:0; width:100%; height:100%; border:0; display:block;
-            background:#0b1220; object-fit: cover;
-            transition: opacity .32s ease;
+            background: var(--panelBg);
+            transition: opacity .28s ease;
           }
-          .shot.hide{ opacity:0 }
-          .frame{ opacity:0 }
-          .frame.show{ opacity:1 }
+          .shot.hide{ opacity:0; }
+          .frame{ opacity:0; }
+          .frame.show{ opacity:1; }
 
           .limited{
             position:absolute; left:0; right:0; bottom:0;
@@ -240,6 +249,7 @@ function LinkCard({ it }) {
   )
 }
 
+/* ---------- 列表主体 ---------- */
 function LinksBody({ data = [], categories = [] }) {
   const groups = (categories || []).map(cat => ({
     cat,
@@ -270,7 +280,7 @@ function LinksBody({ data = [], categories = [] }) {
                 <div className="group-empty">此分类暂无条目</div>
               ) : (
                 <ul className="cards">
-                  {items.map(it => <LinkCard key={`${cat}-${it.URL || it.Name}`} it={it} />)}
+                  {items.map(it => <LinkCard key={`${cat}-${normalizeUrl(it.URL) || it.Name}`} it={it} />)}
                 </ul>
               )}
             </section>
@@ -282,9 +292,13 @@ function LinksBody({ data = [], categories = [] }) {
         :root{
           --txt:#0b1220; --sub:#334155; --muted:#64748b;
           --box:#cfd6e3; --ring:#7aa2ff; --radius:12px;
+          --panelBg:#ffffff;                /* 预览面板（不透明） */
         }
         @media (prefers-color-scheme: dark){
-          :root{ --txt:#e5e7eb; --sub:#cbd5e1; --muted:#94a3b8; --box:#273448; --ring:#4aa8ff }
+          :root{
+            --txt:#e5e7eb; --sub:#cbd5e1; --muted:#94a3b8; --box:#273448; --ring:#4aa8ff;
+            --panelBg:#0f172a;
+          }
         }
 
         .wrap{ max-width:1100px; margin:0 auto; padding:28px 16px 56px; }
@@ -298,7 +312,7 @@ function LinksBody({ data = [], categories = [] }) {
         .group-title{ margin:0; font-size:18px; font-weight:700; color:var(--txt) }
         .group-count{ font-size:12px; color:var(--muted) }
 
-        /* 同排宽度一致：固定最小列宽、其余等分 */
+        /* 同排宽度一致：固定最小列宽，等分剩余空间 */
         .cards{
           list-style:none; padding:0; margin:0;
           display:grid; gap:14px;
@@ -306,11 +320,16 @@ function LinksBody({ data = [], categories = [] }) {
           align-items: stretch;
         }
         .group-empty{ border:1px solid var(--box); border-radius:var(--radius); padding:12px 14px; color:var(--muted); font-size:14px }
+
+        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
+        :global(html.__links_hide_notion article .notion),
+        :global(html.__links_hide_notion article .notion-page){ display:none !important; }
       `}</style>
     </div>
   )
 }
 
+/* ---------- 页面导出 ---------- */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   if (props.__hasSlug) {
@@ -324,7 +343,7 @@ export default function Links(props) {
   return <LinksBody data={props.items} categories={props.categories} />
 }
 
-// ISR：稳定；并探测是否存在 slug=links 占位页
+/* ---------- ISR & 占位页探测 ---------- */
 export async function getStaticProps({ locale }) {
   let base = {}
   let items = []
