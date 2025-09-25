@@ -37,7 +37,7 @@ function PreviewPortal({ children }) {
 }
 
 /* ---------- 计算基于鼠标的最佳预览位置（择最大区域，离鼠标更近一点点） ---------- */
-const MOUSE_GAP = 12 // 与鼠标保持 12px 小间距（原 10px）
+const MOUSE_GAP = 16 // 与鼠标保持 16px 小间距（原 10px）
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -332,23 +332,23 @@ function LinksBody({ data = [], categories = [] }) {
 }
 
 /* ---------- 页面导出：设置标题“links” ---------- */
-export default function Links(props) {
-  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
-  const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
-  const pageTitle = `${siteTitle} | links`
+export 默认 function Links(props) {
+  const theme = siteConfig('THEME', BLOG。THEME， props?.NOTION_CONFIG)
+  const siteTitle = siteConfig('TITLE'， BLOG。TITLE， props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
+  const pageTitle = `${siteTitle} | Links`
 
   return (
     <>
       <Head><title>{pageTitle}</title></Head>
       {props.__hasSlug ? (
         <>
-          {typeof document !== 'undefined' && document.documentElement.classList.add('__links_hide_notion')}
+          {typeof document !== 'undefined' && document.documentElement.classList。add('__links_hide_notion')}
           <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>
-            <LinksBody data={props.items} categories={props.categories} />
+            <LinksBody data={props。items} categories={props.categories} />
           </DynamicLayout>
         </>
       ) : (
-        <LinksBody data={props.items} categories={props.categories} />
+        <LinksBody data={props.items} categories={props。categories} />
       )}
     </>
   )
