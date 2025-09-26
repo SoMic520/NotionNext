@@ -38,7 +38,7 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 图标获取：Notion Avatar 优先；随后从 /public/links-ico 回退 ---------- */
+/* ---------- 图标获取：Notion Avatar 优先；随后从 GitHub /public/links-ico 回退 ---------- */
 function IconRace({ avatar, url, name }) {
   const host = safeHost(url)
   const nameInitial = (name || '').trim().charAt(0)
@@ -71,8 +71,8 @@ function IconRace({ avatar, url, name }) {
     const imgs = []
     const done = (u) => { if (!settled) { settled = true; setSrc(u) } }
 
-    // Avatar URL 获取失败后回退到 public/links-ico
-    const fallbackAvatarSrc = avatarSrc ? avatarSrc : `/links-ico/${name?.toLowerCase() || 'default'}.png`
+    // Avatar URL 获取失败后回退到 GitHub /public/links-ico
+    const fallbackAvatarSrc = avatarSrc ? avatarSrc : `https://github.com/SoMic520/NotionNext/raw/main/public/links-ico/${name?.toLowerCase() || 'default'}.png`
 
     const startRace = () => {
       const candidates = []
@@ -97,7 +97,7 @@ function IconRace({ avatar, url, name }) {
       }
     }
 
-    // 若 Avatar URL 存在且可用，则使用它；否则回退到默认图标
+    // 若 Avatar URL 存在且可用，则使用它；否则回退到 GitHub 图标
     if (avatarSrc) {
       const im = new Image()
       im.decoding = 'async'
@@ -111,7 +111,7 @@ function IconRace({ avatar, url, name }) {
       const cap = setTimeout(() => { if (!settled) done(letter) }, 2600)
       return () => { settled = true; clearTimeout(lead); clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
     } else {
-      // 如果 Avatar URL 不可用，直接使用本地图标路径
+      // 如果 Avatar URL 不可用，直接使用 GitHub 图标路径
       done(fallbackAvatarSrc)
       startRace()
       const cap = setTimeout(() => { if (!settled) done(letter) }, 2200)
@@ -387,7 +387,9 @@ function LinksBody({ data = [], categories = [] }) {
         }
 
         .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px; }
-        .hd h1{ margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt) }
+        .hd h1{
+          margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt)
+        }
         .hd p{ margin:10px 0 0; font-size:14px; color:var(--muted) }
 
         .empty{
@@ -398,7 +400,9 @@ function LinksBody({ data = [], categories = [] }) {
 
         .groups{ display:flex; flex-direction:column; gap:30px; margin-top:14px }
         .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px }
-        .group-title{ margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px }
+        .group-title{
+          margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px
+        }
         .group-count{ font-size:12px; color:var(--muted) }
 
         .cards{
