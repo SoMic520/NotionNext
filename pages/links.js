@@ -8,7 +8,7 @@ import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-/* ---------- URL 规范化：去尾标点 & 补协议 ---------- */
+/* ---------- URL 规范化 ---------- */
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
@@ -18,7 +18,7 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* ---------- 字母头像（最终兜底；优先名称首字母大写） ---------- */
+/* ---------- 字母头像（优先名称首字母大写） ---------- */
 function hashColor(text = '') {
   let h = 0
   for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
@@ -38,86 +38,96 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 更快的站点图标：并发竞速 ---------- */
-function FastIcon({ url, name }) {
+/* ---------- 图标获取：Notion Avatar 优先；随后并发竞速各类 favicon ---------- */
+function IconRace({ avatar, url, name }) {
   const host = safeHost(url)
-  // 名称首字母优先，再回落域名首字母
   const nameInitial = (name || '').trim().charAt(0)
   const hostInitial = (host || '').charAt(0)
   const initial = (nameInitial || hostInitial || 'L').toUpperCase()
   const letter = letterAvatarDataURI(initial, hashColor(name || host))
   const [src, setSrc] = useState(letter)
 
+  // 预连接到站点域 & Avatar 域
   useEffect(() => {
-    if (!host) { setSrc(letter); return }
-    if (typeof document !== 'undefined') {
-      const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + host
-      const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + host; pre.crossOrigin = ''
+    if (typeof document === 'undefined') return
+    const els = []
+    const add = h => {
+      if (!h) return
+      const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + h
+      const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + h; pre.crossOrigin = ''
       document.head.appendChild(dns); document.head.appendChild(pre)
-      return () => { try { document.head.removeChild(dns); document.head.removeChild(pre) } catch {} }
+      els.push(dns, pre)
     }
-  }, [host])
+    add(host)
+    add(safeHost(avatar))
+    return () => { els.forEach(e => { try { document.head.removeChild(e) } catch {} }) }
+  }, [host, avatar])
 
   useEffect(() => {
-    if (!host) return
     let settled = false
     const imgs = []
     const done = (u) => { if (!settled) { settled = true; setSrc(u) } }
-    const candidates = [
-      `https://${host}/favicon.ico`,
-      `https://${host}/apple-touch-icon.png`,
-      `https://${host}/favicon.png`,
-      `https://${host}/favicon.svg`,
-      `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
-      `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
-    ]
-    const globalTimer = setTimeout(() => { if (!settled) done(letter) }, 2200)
-    for (const u of candidates) {
+
+    const startRace = () => {
+      const candidates = []
+      if (host) {
+        candidates.push(
+          `https://${host}/favicon.ico`,
+          `https://${host}/apple-touch-icon.png`,
+          `https://${host}/favicon.png`,
+          `https://${host}/favicon.svg`,
+          `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
+          `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
+        )
+      }
+      for (const u of candidates) {
+        const im = new Image()
+        im.decoding = 'async'
+        im.referrerPolicy = 'no-referrer'
+        im.onload = () => done(u)
+        im.onerror = () => {}
+        im.src = u
+        imgs.push(im)
+      }
+    }
+
+    // 处理从 GitHub 获取头像的情况
+    const avatarSrc = avatar && avatar.startsWith("/links-ico/")
+      ? `https://raw.githubusercontent.com/SoMic520/NotionNext/main/public${avatar}`
+      : avatar ? normalizeUrl(avatar) : ''
+
+    if (avatarSrc) {
       const im = new Image()
       im.decoding = 'async'
       im.referrerPolicy = 'no-referrer'
-      im.onload = () => done(u)
-      im.onerror = () => {}
-      im.src = u
+      im.onload = () => done(avatarSrc)
+      im.onerror = () => startRace()
+      im.src = avatarSrc
       imgs.push(im)
+      // 给 Avatar 600ms 领先窗口；若未成功则开启竞速（Avatar 若后到仍可覆盖）
+      const lead = setTimeout(() => { if (!settled) startRace() }, 600)
+      const cap = setTimeout(() => { if (!settled) done(letter) }, 2600)
+      return () => { settled = true; clearTimeout(lead); clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
+    } else {
+      startRace()
+      const cap = setTimeout(() => { if (!settled) done(letter) }, 2200)
+      return () => { settled = true; clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
     }
-    return () => { clearTimeout(globalTimer); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
-  }, [host])
+  }, [avatar, url, name])
 
   return (
     <img
       src={src}
       alt={name}
-      title={host || name}
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
+      style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
     />
   )
 }
 
-/* ---------- 智能图标：优先 Notion Avatar（支持 png/jpg/svg/ico），失败再回落 FastIcon ---------- */
-function IconSmart({ avatar, url, name }) {
-  const [broken, setBroken] = useState(!avatar)
-  const avatarSrc = avatar ? normalizeUrl(avatar) : ''
-  if (avatar && !broken) {
-    return (
-      <img
-        src={avatarSrc}
-        alt={name}
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
-        onError={() => setBroken(true)}
-      />
-    )
-  }
-  return <FastIcon url={url} name={name} />
-}
-
-/* ---------- Portal：把预览窗放到 <body> ---------- */
+/* ---------- Portal：将预览窗放到 <body> ---------- */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
   const elRef = useRef(null)
@@ -134,30 +144,27 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* ---------- 预览定位（与鼠标保持 40px） ---------- */
+/* ---------- 预览定位：与鼠标保持 40px ---------- */
 const MOUSE_GAP = 40
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
   const m = MOUSE_GAP
   const candidates = [
-    { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
-    { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
-    { side: 'bottom', w: Math.max(0, vw - 2 * m),       h: Math.max(0, vh - clientY - m) },
-    { side: 'top',    w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
+    { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2*m) },
+    { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2*m) },
+    { side: 'bottom', w: Math.max(0, vw - 2*m),         h: Math.max(0, vh - clientY - m) },
+    { side: 'top',    w: Math.max(0, vw - 2*m),         h: Math.max(0, clientY - m) }
   ].sort((a,b)=> b.w*b.h - a.w*a.h)[0]
-
-  const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520)
-  const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420)
+  const capW = Math.min(Math.max(Math.floor(vw*0.35), 360), 520)
+  const capH = Math.min(Math.max(Math.floor(vh*0.40), 240), 420)
   const w = Math.max(320, Math.min(candidates.w - m, capW))
   const h = Math.max(220, Math.min(candidates.h - m, capH))
-
-  let left = m, top = m
-  if (candidates.side === 'right') { left = Math.min(clientX + m, vw - w - m); top  = Math.min(Math.max(clientY - h/2, m), vh - h - m) }
-  else if (candidates.side === 'left') { left = Math.max(clientX - w - m, m); top  = Math.min(Math.max(clientY - h/2, m), vh - h - m) }
-  else if (candidates.side === 'bottom') { left = Math.min(Math.max(clientX - w/2, m), vw - w - m); top  = Math.min(clientY + m, vh - h - m) }
-  else { left = Math.min(Math.max(clientX - w/2, m), vw - w - m); top  = Math.max(clientY - h - m, m) }
-
+  let left=m, top=m
+  if (candidates.side==='right'){ left=Math.min(clientX+m, vw-w-m); top=Math.min(Math.max(clientY-h/2,m), vh-h-m) }
+  else if (candidates.side==='left'){ left=Math.max(clientX-w-m, m); top=Math.min(Math.max(clientY-h/2,m), vh-h-m) }
+  else if (candidates.side==='bottom'){ left=Math.min(Math.max(clientX-w/2,m), vw-w-m); top=Math.min(clientY+m, vh-h-m) }
+  else { left=Math.min(Math.max(clientX-w/2,m), vw-w-m); top=Math.max(clientY-h-m, m) }
   return { left, top, w, h }
 }
 
@@ -208,8 +215,7 @@ function LinkCard({ it }) {
         onMouseLeave={closePreview}
       >
         <div className="icon" aria-hidden>
-          {/* 头像优先用 Notion Avatar，失败再回落 */}
-          <IconSmart avatar={it.Avatar} url={url} name={it.Name} />
+          <IconRace avatar={it.Avatar} url={url} name={it.Name} />
         </div>
 
         <div className="meta">
@@ -218,7 +224,7 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 预览（Portal 到 body） */}
+        {/* 通过 Portal 渲染的预览窗：绝不被裁剪/遮挡 */}
         {url && (
           <PreviewPortal>
             <div
@@ -281,7 +287,6 @@ function LinkCard({ it }) {
             white-space:nowrap; overflow:hidden; text-overflow:ellipsis
           }
 
-          /* 预览窗（Portal 到 body） */
           .preview{
             position: fixed;
             z-index: 2147483000;
@@ -378,7 +383,9 @@ function LinksBody({ data = [], categories = [] }) {
         }
 
         .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px; }
-        .hd h1{ margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt) }
+        .hd h1{
+          margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt)
+        }
         .hd p{ margin:10px 0 0; font-size:14px; color:var(--muted) }
 
         .empty{
@@ -389,7 +396,9 @@ function LinksBody({ data = [], categories = [] }) {
 
         .groups{ display:flex; flex-direction:column; gap:30px; margin-top:14px }
         .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px }
-        .group-title{ margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px }
+        .group-title{
+          margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px
+        }
         .group-count{ font-size:12px; color:var(--muted) }
 
         .cards{
@@ -403,6 +412,7 @@ function LinksBody({ data = [], categories = [] }) {
           padding:12px 14px; color:var(--muted); font-size:14px
         }
 
+        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
         :global(html.__links_hide_notion article .notion),
         :global(html.__links_hide_notion article .notion-page){ display:none !important; }
       `}</style>
@@ -410,7 +420,7 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* ---------- 页面导出：标题 & 全局预连接 ---------- */
+/* ---------- 页面导出：标题 & 预连接 ---------- */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
@@ -429,9 +439,10 @@ export default function Links(props) {
     <>
       <Head>
         <title>{pageTitle}</title>
-        <link rel="preconnect" href="https://www.google.com" crossOrigin="" />
-        <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
-        <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
+        {/* 提前建链，加速第三方静态源 */}
+        <link rel="dns-prefetch" href="https://www.google.com" />
+        <link rel="dns-prefetch" href="https://icons.duckduckgo.com" />
+        <link rel="dns-prefetch" href="https://s.wordpress.com" />
       </Head>
       {props.__hasSlug
         ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
