@@ -38,40 +38,55 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 更快的站点图标：并发竞速 ---------- */
-function FastIcon({ url, name }) {
+/* ---------- 图标竞速：Notion Avatar 也作为候选源（与站点 favicon 并发） ---------- */
+function IconRace({ avatar, url, name }) {
   const host = safeHost(url)
-  // 名称首字母优先，再回落域名首字母
   const nameInitial = (name || '').trim().charAt(0)
   const hostInitial = (host || '').charAt(0)
   const initial = (nameInitial || hostInitial || 'L').toUpperCase()
   const letter = letterAvatarDataURI(initial, hashColor(name || host))
   const [src, setSrc] = useState(letter)
 
+  // 预连接到站点域 & Avatar 域
   useEffect(() => {
-    if (!host) { setSrc(letter); return }
-    if (typeof document !== 'undefined') {
-      const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + host
-      const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + host; pre.crossOrigin = ''
+    const links = []
+    const add = (h) => {
+      if (!h) return
+      const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + h
+      const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + h; pre.crossOrigin = ''
       document.head.appendChild(dns); document.head.appendChild(pre)
-      return () => { try { document.head.removeChild(dns); document.head.removeChild(pre) } catch {} }
+      links.push(dns, pre)
     }
-  }, [host])
+    if (typeof document !== 'undefined') {
+      add(host)
+      const avatarHost = safeHost(avatar)
+      add(avatarHost)
+      return () => { links.forEach(l => { try { document.head.removeChild(l) } catch {} }) }
+    }
+  }, [host, avatar])
 
   useEffect(() => {
-    if (!host) return
     let settled = false
     const imgs = []
     const done = (u) => { if (!settled) { settled = true; setSrc(u) } }
-    const candidates = [
-      `https://${host}/favicon.ico`,
-      `https://${host}/apple-touch-icon.png`,
-      `https://${host}/favicon.png`,
-      `https://${host}/favicon.svg`,
-      `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
-      `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
-    ]
+
+    // 候选源：Notion Avatar（若有） + 站点常见图标 + S2/DDG
+    const candidatesSet = new Set()
+    const avatarSrc = avatar ? normalizeUrl(avatar) : ''
+    if (avatarSrc) candidatesSet.add(avatarSrc)
+
+    if (host) {
+      candidatesSet.add(`https://${host}/favicon.ico`)
+      candidatesSet.add(`https://${host}/apple-touch-icon.png`)
+      candidatesSet.add(`https://${host}/favicon.png`)
+      candidatesSet.add(`https://${host}/favicon.svg`)
+      candidatesSet.add(`https://www.google.com/s2/favicons?sz=64&domain=${host}`)
+      candidatesSet.add(`https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`)
+    }
+
+    const candidates = Array.from(candidatesSet)
     const globalTimer = setTimeout(() => { if (!settled) done(letter) }, 2200)
+
     for (const u of candidates) {
       const im = new Image()
       im.decoding = 'async'
@@ -82,13 +97,12 @@ function FastIcon({ url, name }) {
       imgs.push(im)
     }
     return () => { clearTimeout(globalTimer); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
-  }, [host])
+  }, [avatar, url, name])
 
   return (
     <img
       src={src}
       alt={name}
-      title={host || name}
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
@@ -97,27 +111,7 @@ function FastIcon({ url, name }) {
   )
 }
 
-/* ---------- 智能图标：优先 Notion Avatar（支持 png/jpg/svg/ico），失败再回落 FastIcon ---------- */
-function IconSmart({ avatar, url, name }) {
-  const [broken, setBroken] = useState(!avatar)
-  const avatarSrc = avatar ? normalizeUrl(avatar) : ''
-  if (avatar && !broken) {
-    return (
-      <img
-        src={avatarSrc}
-        alt={name}
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
-        onError={() => setBroken(true)}
-      />
-    )
-  }
-  return <FastIcon url={url} name={name} />
-}
-
-/* ---------- Portal：把预览窗放到 <body> ---------- */
+/* ---------- Portal：把预览窗放到 <body>，避免被裁剪/遮挡 ---------- */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
   const elRef = useRef(null)
@@ -134,29 +128,40 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* ---------- 预览定位（与鼠标保持 40px） ---------- */
+/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，保持 40px 距离） ---------- */
 const MOUSE_GAP = 40
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
   const m = MOUSE_GAP
+
   const candidates = [
     { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
     { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
     { side: 'bottom', w: Math.max(0, vw - 2 * m),       h: Math.max(0, vh - clientY - m) },
     { side: 'top',    w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
-  ].sort((a,b)=> b.w*b.h - a.w*a.h)[0]
+  ]
+  const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
 
   const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520)
   const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420)
-  const w = Math.max(320, Math.min(candidates.w - m, capW))
-  const h = Math.max(220, Math.min(candidates.h - m, capH))
+  const w = Math.max(320, Math.min(best.w - m, capW))
+  const h = Math.max(220, Math.min(best.h - m, capH))
 
   let left = m, top = m
-  if (candidates.side === 'right') { left = Math.min(clientX + m, vw - w - m); top  = Math.min(Math.max(clientY - h/2, m), vh - h - m) }
-  else if (candidates.side === 'left') { left = Math.max(clientX - w - m, m); top  = Math.min(Math.max(clientY - h/2, m), vh - h - m) }
-  else if (candidates.side === 'bottom') { left = Math.min(Math.max(clientX - w/2, m), vw - w - m); top  = Math.min(clientY + m, vh - h - m) }
-  else { left = Math.min(Math.max(clientX - w/2, m), vw - w - m); top  = Math.max(clientY - h - m, m) }
+  if (best.side === 'right') {
+    left = Math.min(clientX + m, vw - w - m)
+    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
+  } else if (best.side === 'left') {
+    left = Math.max(clientX - w - m, m)
+    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
+  } else if (best.side === 'bottom') {
+    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
+    top  = Math.min(clientY + m, vh - h - m)
+  } else { // top
+    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
+    top  = Math.max(clientY - h - m, m)
+  }
 
   return { left, top, w, h }
 }
@@ -208,8 +213,8 @@ function LinkCard({ it }) {
         onMouseLeave={closePreview}
       >
         <div className="icon" aria-hidden>
-          {/* 头像优先用 Notion Avatar，失败再回落 */}
-          <IconSmart avatar={it.Avatar} url={url} name={it.Name} />
+          {/* 竞速使用：Notion Avatar 也参与候选源 */}
+          <IconRace avatar={it.Avatar} url={url} name={it.Name} />
         </div>
 
         <div className="meta">
