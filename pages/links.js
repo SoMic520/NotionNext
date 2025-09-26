@@ -18,7 +18,27 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* ---------- 图标获取：并发竞速各类 favicon ---------- */
+/* ---------- 字母头像（优先名称首字母大写） ---------- */
+function hashColor(text = '') {
+  let h = 0
+  for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
+  const hue = Math.abs(h) % 360
+  return `hsl(${hue} 70% 45%)`
+}
+function letterAvatarDataURI(label = 'L', bg = '#888') {
+  const txt = (label || 'L').toUpperCase().slice(0, 1)
+  const svg = encodeURIComponent( 
+    ` 
+      <rect width='100%' height='100%' rx='12' ry='12' fill='${bg}'/> 
+      <text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' 
+            font-family='system-ui,Segoe UI,Roboto,Helvetica,Arial' 
+            font-size='32' fill='white' font-weight='700'>${txt}</text> 
+    </svg>` 
+  ) 
+  return `data:image/svg+xml;charset=utf-8,${svg}` 
+} 
+
+/* ---------- 图标获取：并发竞速各类 favicon ---------- */ 
 function IconRace({ url, name }) { 
   const host = safeHost(url) 
   const nameInitial = (name || '').trim().charAt(0) 
@@ -26,7 +46,7 @@ function IconRace({ url, name }) {
   const initial = (nameInitial || hostInitial || 'L').toUpperCase() 
   const letter = letterAvatarDataURI(initial, hashColor(name || host)) 
   const [src, setSrc] = useState(letter) 
-  
+
   // 预连接到站点域 
   useEffect(() => { 
     if (typeof document === 'undefined') return 
@@ -46,7 +66,7 @@ function IconRace({ url, name }) {
     let settled = false 
     const imgs = [] 
     const done = (u) => { if (!settled) { settled = true; setSrc(u) } } 
-    
+
     const startRace = () => { 
       const candidates = [] 
       if (host) { 
@@ -54,25 +74,25 @@ function IconRace({ url, name }) {
           `https://${host}/favicon.ico`, 
           `https://${host}/apple-touch-icon.png`, 
           `https://${host}/favicon.png`, 
-          `https://${host}/favicon.svg`,  
-          `https://www.google.com/s2/favicons?sz=64&domain=${host}`,  
-          `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`  
-        )  
-      }  
-      for (const u of candidates) {  
-        const im = new Image()  
-        im.decoding = 'async'  
-        im.referrerPolicy = 'no-referrer'  
-        im.onload = () => done(u)  
-        im.onerror = () => {}  
-        im.src = u  
-        imgs.push(im)  
-      }  
-    }  
+          `https://${host}/favicon.svg`,   
+          `https://www.google.com/s2/favicons?sz=64&domain=${host}`,   
+          `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`   
+        )   
+      }   
+      for (const u of candidates) {   
+        const im = new Image()   
+        im.decoding = 'async'   
+        im.referrerPolicy = 'no-referrer'   
+        im.onload = () => done(u)   
+        im.onerror = () => {}   
+        im.src = u   
+        imgs.push(im)   
+      }   
+    }   
 
-    startRace()  
-    const cap = setTimeout(() => { if (!settled) done(letter) }, 2200)  
-    return () => { settled = true; clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }  
+    startRace()   
+    const cap = setTimeout(() => { if (!settled) done(letter) }, 2200)   
+    return () => { settled = true; clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }   
   }, [url, name])
 
   return (  
@@ -142,5 +162,5 @@ export async function getStaticProps({ locale }) {
     categories = []  
   }
 
-  return { props: { ...base, items, categories, __hasSlug: hasSlug }, revalidate: 120 }  // 2-minute refresh
+  return { props: { ...base, items, categories, __hasSlug: hasSlug }, revalidate: 120 }  // 页面2分钟刷新一次
 }
