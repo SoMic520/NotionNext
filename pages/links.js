@@ -38,10 +38,10 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 更快的站点图标：并发竞速（root/apple-touch/S2/DDG），谁先加载用谁 ---------- */
+/* ---------- 更快的站点图标：并发竞速 ---------- */
 function FastIcon({ url, name }) {
   const host = safeHost(url)
-  // ★ 这里按你的要求：网页随机字母 logo 采用“网页名称首字母大写”，再回落到域名首字母
+  // 名称首字母优先，再回落域名首字母
   const nameInitial = (name || '').trim().charAt(0)
   const hostInitial = (host || '').charAt(0)
   const initial = (nameInitial || hostInitial || 'L').toUpperCase()
@@ -50,7 +50,6 @@ function FastIcon({ url, name }) {
 
   useEffect(() => {
     if (!host) { setSrc(letter); return }
-    // 为该域名预先建链（提升首包）
     if (typeof document !== 'undefined') {
       const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + host
       const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + host; pre.crossOrigin = ''
@@ -72,9 +71,7 @@ function FastIcon({ url, name }) {
       `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
       `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
     ]
-    // 总兜底超时（避免一直等）
     const globalTimer = setTimeout(() => { if (!settled) done(letter) }, 2200)
-
     for (const u of candidates) {
       const im = new Image()
       im.decoding = 'async'
@@ -100,7 +97,27 @@ function FastIcon({ url, name }) {
   )
 }
 
-/* ---------- Portal：把预览窗放到 <body>，避免被裁剪/遮挡 ---------- */
+/* ---------- 智能图标：优先 Notion Avatar（支持 png/jpg/svg/ico），失败再回落 FastIcon ---------- */
+function IconSmart({ avatar, url, name }) {
+  const [broken, setBroken] = useState(!avatar)
+  const avatarSrc = avatar ? normalizeUrl(avatar) : ''
+  if (avatar && !broken) {
+    return (
+      <img
+        src={avatarSrc}
+        alt={name}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
+        onError={() => setBroken(true)}
+      />
+    )
+  }
+  return <FastIcon url={url} name={name} />
+}
+
+/* ---------- Portal：把预览窗放到 <body> ---------- */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
   const elRef = useRef(null)
@@ -117,41 +134,29 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，保持 40px 距离） ---------- */
+/* ---------- 预览定位（与鼠标保持 40px） ---------- */
 const MOUSE_GAP = 40
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
   const m = MOUSE_GAP
-
   const candidates = [
     { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
     { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
     { side: 'bottom', w: Math.max(0, vw - 2 * m),       h: Math.max(0, vh - clientY - m) },
     { side: 'top',    w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
-  ]
-  const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
+  ].sort((a,b)=> b.w*b.h - a.w*a.h)[0]
 
-  // 舒适上限：不过大
   const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520)
   const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420)
-  const w = Math.max(320, Math.min(best.w - m, capW))
-  const h = Math.max(220, Math.min(best.h - m, capH))
+  const w = Math.max(320, Math.min(candidates.w - m, capW))
+  const h = Math.max(220, Math.min(candidates.h - m, capH))
 
   let left = m, top = m
-  if (best.side === 'right') {
-    left = Math.min(clientX + m, vw - w - m)
-    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
-  } else if (best.side === 'left') {
-    left = Math.max(clientX - w - m, m)
-    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
-  } else if (best.side === 'bottom') {
-    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
-    top  = Math.min(clientY + m, vh - h - m)
-  } else { // top
-    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
-    top  = Math.max(clientY - h - m, m)
-  }
+  if (candidates.side === 'right') { left = Math.min(clientX + m, vw - w - m); top  = Math.min(Math.max(clientY - h/2, m), vh - h - m) }
+  else if (candidates.side === 'left') { left = Math.max(clientX - w - m, m); top  = Math.min(Math.max(clientY - h/2, m), vh - h - m) }
+  else if (candidates.side === 'bottom') { left = Math.min(Math.max(clientX - w/2, m), vw - w - m); top  = Math.min(clientY + m, vh - h - m) }
+  else { left = Math.min(Math.max(clientX - w/2, m), vw - w - m); top  = Math.max(clientY - h - m, m) }
 
   return { left, top, w, h }
 }
@@ -166,8 +171,6 @@ function LinkCard({ it }) {
 
   const url = normalizeUrl(it.URL)
   const host = safeHost(it.URL)
-
-  // 预览失败截图兜底（按预览窗口大小）
   const shot = url ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}` : ''
 
   const openPreview = (e) => {
@@ -176,10 +179,7 @@ function LinkCard({ it }) {
     setPv(prev => ({ ...computePreviewPlacement(clientX, clientY), visible: true }))
     setLoaded(false); setFailed(false)
     clearTimeout(failTimerRef.current)
-    // 1.9s 内未 onLoad → 认为受限，切换截图
-    failTimerRef.current = setTimeout(() => {
-      setFailed(prev => prev || !loaded)
-    }, 1900)
+    failTimerRef.current = setTimeout(() => { setFailed(prev => prev || !loaded) }, 1900)
   }
   const movePreview = (e) => {
     if (!pv.visible || !url) return
@@ -208,7 +208,8 @@ function LinkCard({ it }) {
         onMouseLeave={closePreview}
       >
         <div className="icon" aria-hidden>
-          <FastIcon url={url} name={it.Name} />
+          {/* 头像优先用 Notion Avatar，失败再回落 */}
+          <IconSmart avatar={it.Avatar} url={url} name={it.Name} />
         </div>
 
         <div className="meta">
@@ -217,7 +218,7 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 通过 Portal 渲染的预览窗：绝不被裁剪/遮挡 */}
+        {/* 预览（Portal 到 body） */}
         {url && (
           <PreviewPortal>
             <div
@@ -225,9 +226,7 @@ function LinkCard({ it }) {
               style={{ left: pv.left, top: pv.top, width: pv.w, height: pv.h }}
               aria-hidden
             >
-              {shot && (
-                <img className={`shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />
-              )}
+              {shot && <img className={`shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />}
               <iframe
                 className={`frame ${loaded && !failed ? 'show' : ''}`}
                 src={url}
@@ -244,8 +243,6 @@ function LinkCard({ it }) {
 
         <style jsx>{`
           li { display:block; height:100% }
-
-          /* —— 卡片层次感：标题/副文/附属 —— */
           .card{
             position:relative; display:flex; gap:14px; align-items:flex-start;
             height:100%; min-height:100px;
@@ -265,7 +262,7 @@ function LinkCard({ it }) {
             flex:0 0 auto; width:48px; height:48px;
             border-radius:12px; overflow:hidden;
             border:1px solid var(--box);
-            background: #fff;
+            background:#fff;
           }
           @media (prefers-color-scheme: dark){ .icon{ background:#0f172a } }
 
@@ -381,9 +378,7 @@ function LinksBody({ data = [], categories = [] }) {
         }
 
         .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px; }
-        .hd h1{
-          margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt)
-        }
+        .hd h1{ margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt) }
         .hd p{ margin:10px 0 0; font-size:14px; color:var(--muted) }
 
         .empty{
@@ -394,12 +389,9 @@ function LinksBody({ data = [], categories = [] }) {
 
         .groups{ display:flex; flex-direction:column; gap:30px; margin-top:14px }
         .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px }
-        .group-title{
-          margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px
-        }
+        .group-title{ margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px }
         .group-count{ font-size:12px; color:var(--muted) }
 
-        /* 同排宽度一致 */
         .cards{
           list-style:none; padding:0; margin:0;
           display:grid; gap:14px;
@@ -411,7 +403,6 @@ function LinksBody({ data = [], categories = [] }) {
           padding:12px 14px; color:var(--muted); font-size:14px
         }
 
-        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
         :global(html.__links_hide_notion article .notion),
         :global(html.__links_hide_notion article .notion-page){ display:none !important; }
       `}</style>
@@ -438,7 +429,6 @@ export default function Links(props) {
     <>
       <Head>
         <title>{pageTitle}</title>
-        {/* 提前建链，加速第三方静态源（修正为有效的 link 标签） */}
         <link rel="preconnect" href="https://www.google.com" crossOrigin="" />
         <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
