@@ -7,6 +7,7 @@ import { DynamicLayout } from '@/themes/theme'
 import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { useRouter } from 'next/router'
 
 /* ---------- 小工具 ---------- */
 function normalizeUrl(u) {
@@ -18,7 +19,17 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* SSR 安全：仅在客户端为 true，解决“刷新后显示不了” */
+/* 刷新检测：刷新时“重进”一次 /links，等同点击导航按钮（避免某些宿主水合问题） */
+function isHardReload() {
+  if (typeof performance === 'undefined') return false
+  const nav = performance.getEntriesByType?.('navigation')?.[0]
+  if (nav && 'type' in nav) return nav.type === 'reload'
+  // 旧接口
+  // eslint-disable-next-line deprecation/deprecation
+  return performance.navigation && performance.navigation.type === 1
+}
+
+/* SSR 安全：仅在客户端为 true，避免刷新白屏 */
 function useIsClient() {
   const [isClient, setIsClient] = useState(false)
   useEffect(() => { setIsClient(true) }, [])
@@ -62,7 +73,7 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* 站点图标：并发竞速，谁先到用谁（仅客户端渲染） */
+/* 站点图标：并发竞速，谁先到用谁（仅客户端渲染；绝不回落到本站 /favicon.ico） */
 function FastIcon({ url, name }) {
   const host = safeHost(url)
   const letter = letterAvatarDataURI(host?.[0] || name?.[0] || 'L', hashColor(host || name))
@@ -204,7 +215,6 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 预览窗仅在客户端渲染，避免 SSR 水合问题 */}
         {isClient && url && (
           <PreviewPortal>
             <div
@@ -212,9 +222,7 @@ function LinkCard({ it }) {
               style={{ left: pv.left, top: pv.top, width: pv.w, height: pv.h }}
               aria-hidden
             >
-              {shot && (
-                <img className={`shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />
-              )}
+              {shot && (<img className={`shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />)}
               <iframe
                 className={`frame ${loaded && !failed ? 'show' : ''}`}
                 src={url}
@@ -335,11 +343,25 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* 页面导出：标题 + 全局预连接 */
+/* 页面导出：标题 + 处理“刷新即重进” + 主题外壳 */
 export default function Links(props) {
+  const router = useRouter()
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
   const pageTitle = `${siteTitle} | Links`
+
+  // 刷新 → 视为“点击友情链接按钮再进一次”，避免某些宿主白屏
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const already = router.asPath.includes('__re=1')
+    if (isHardReload() && !already) {
+      const url = router.asPath + (router.asPath.includes('?') ? '&' : '?') + '__re=1'
+      // 使用 shallow+scroll=false，等同一次客户端跳转
+      router.replace(url, undefined, { shallow: true, scroll: true })
+    }
+  // 仅在首次挂载判定
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (props.__hasSlug && typeof document !== 'undefined') {
