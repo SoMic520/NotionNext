@@ -18,7 +18,7 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* 仅在客户端为 true，避免刷新白屏 */
+/* 仅在客户端为 true，避免 SSR 水合问题 */
 function useIsClient() {
   const [isClient, setIsClient] = useState(false)
   useEffect(() => { setIsClient(true) }, [])
@@ -70,7 +70,7 @@ function FastIcon({ url, name }) {
 
   useEffect(() => {
     if (!host) { setSrc(letter); return }
-    // 预连到目标域，加速首包
+    // 预连到目标域
     if (typeof document !== 'undefined') {
       const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + host
       const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + host; pre.crossOrigin = ''
@@ -143,7 +143,7 @@ function computePreviewPlacement(clientX, clientY) {
   return { left, top, w, h }
 }
 
-/* 单张卡片（SSR 安全） */
+/* 单张卡片 */
 function LinkCard({ it }) {
   const isClient = useIsClient()
   const rafRef = useRef(null)
@@ -202,7 +202,6 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 预览窗仅在客户端渲染（注意：样式使用全局类名） */}
         {isClient && url && (
           <PreviewPortal>
             <div
@@ -306,50 +305,33 @@ function LinksBody({ data = [], categories = [] }) {
 
         .cards{ list-style:none; padding:0; margin:0; display:grid; gap:14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: stretch }
         .group-empty{ border:1px solid var(--box); border-radius:var(--radius); padding:12px 14px; color:var(--muted); font-size:14px }
-
-        :global(html.__links_hide_notion article .notion), :global(html.__links_hide_notion article .notion-page){ display:none !important }
       `}</style>
 
-      {/* ★ 关键：Portal 内容使用全局样式，避免因 styled-jsx 作用域导致刷新时预览层“裸奔”覆盖页面 */}
+      {/* 预览层的全局样式（Portal 渲染在 body） */}
       <style jsx global>{`
         .links-preview{
-          position: fixed;
-          z-index: 2147483000;
-          pointer-events: none;
-          border-radius: 12px;
-          overflow: hidden;
-          box-shadow: 0 18px 48px rgba(0,0,0,.28);
-          border: 1px solid var(--ring);
-          background: var(--panelBg);
-          opacity: 0;
-          transform: translateY(-8px) scale(.985);
-          transition:
-            left .36s cubic-bezier(.22,.61,.36,1),
-            top .36s cubic-bezier(.22,.61,.36,1),
-            width .36s cubic-bezier(.22,.61,.36,1),
-            height .36s cubic-bezier(.22,.61,.36,1),
-            opacity .36s ease,
-            transform .36s cubic-bezier(.22,.61,.36,1);
+          position: fixed; z-index: 2147483000; pointer-events: none;
+          border-radius: 12px; overflow: hidden; box-shadow: 0 18px 48px rgba(0,0,0,.28);
+          border: 1px solid var(--ring); background: var(--panelBg);
+          opacity: 0; transform: translateY(-8px) scale(.985);
+          transition: left .36s cubic-bezier(.22,.61,.36,1), top .36s cubic-bezier(.22,.61,.36,1),
+                     width .36s cubic-bezier(.22,.61,.36,1), height .36s cubic-bezier(.22,.61,.36,1),
+                     opacity .36s ease, transform .36s cubic-bezier(.22,.61,.36,1);
           display: none;
         }
-        @media (min-width: 900px){
-          .links-preview{ display:block }
-        }
+        @media (min-width: 900px){ .links-preview{ display:block } }
         .links-preview.visible{ opacity:1; transform: translateY(-2px) scale(1) }
 
-        .links-preview-frame,
-        .links-preview-shot{
-          position:absolute; inset:0; width:100%; height:100%;
-          border:0; display:block; background: var(--panelBg);
-          transition: opacity .28s ease;
+        .links-preview-frame, .links-preview-shot{
+          position:absolute; inset:0; width:100%; height:100%; border:0; display:block;
+          background: var(--panelBg); transition: opacity .28s ease;
         }
         .links-preview-shot.hide{ opacity:0 }
         .links-preview-frame{ opacity:0 }
         .links-preview-frame.show{ opacity:1 }
 
         .links-preview-limited{
-          position:absolute; left:0; right:0; bottom:0;
-          padding: 6px 10px; font-size: 12px; color:#e5e7eb;
+          position:absolute; left:0; right:0; bottom:0; padding: 6px 10px; font-size: 12px; color:#e5e7eb;
           background: linear-gradient(to top, rgba(11,18,32,.9), rgba(11,18,32,.0));
         }
       `}</style>
@@ -357,18 +339,11 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* 页面导出：标题 + 主题外壳 */
+/* 页面导出：统一用 LayoutBase 外壳，避免与 Notion 占位/正文冲突 */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
   const pageTitle = `${siteTitle} | Links`
-
-  useEffect(() => {
-    if (props.__hasSlug && typeof document !== 'undefined') {
-      document.documentElement.classList.add('__links_hide_notion')
-      return () => document.documentElement.classList.remove('__links_hide_notion')
-    }
-  }, [props.__hasSlug])
 
   const body = <LinksBody data={props.items} categories={props.categories} />
 
@@ -380,28 +355,21 @@ export default function Links(props) {
         <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
       </Head>
-      {props.__hasSlug
-        ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
-        : body}
+      <DynamicLayout theme={theme} layoutName="LayoutBase" {...props}>
+        {body}
+      </DynamicLayout>
     </>
   )
 }
 
-/* ISR & 占位页探测 */
+/* ISR & 站点数据 */
 export async function getStaticProps({ locale }) {
   let base = {}
   let items = []
   let categories = []
-  let hasSlug = false
 
   try {
     base = await getGlobalData({ from: 'links', locale })
-    const pages = base?.allPages || base?.pages || []
-    hasSlug = Array.isArray(pages) && pages.some(p =>
-      (p?.slug === 'links' || p?.slug?.value === 'links') &&
-      (p?.type === 'Page' || p?.type?.value === 'Page') &&
-      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
-    )
   } catch (e) {
     base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
   }
@@ -415,5 +383,5 @@ export async function getStaticProps({ locale }) {
     categories = []
   }
 
-  return { props: { ...base, items, categories, __hasSlug: hasSlug }, revalidate: 600 }
+  return { props: { ...base, items, categories }, revalidate: 600 }
 }
