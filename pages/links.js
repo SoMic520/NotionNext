@@ -8,7 +8,7 @@ import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-/* ---------- URL 规范化：去尾标点 & 补协议 ---------- */
+/* ---------- 小工具 ---------- */
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
@@ -18,7 +18,14 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* ---------- 字母头像（最终兜底，不再回落到本站 /favicon.ico） ---------- */
+/* SSR 安全：仅在客户端为 true，解决“刷新后显示不了” */
+function useIsClient() {
+  const [isClient, setIsClient] = useState(false)
+  useEffect(() => { setIsClient(true) }, [])
+  return isClient
+}
+
+/* 字母头像（最终兜底，首帧占位） */
 function hashColor(text = '') {
   let h = 0
   for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
@@ -38,7 +45,24 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 更快的站点图标：并发竞速（root/apple-touch/S2/DDG），谁先加载用谁 ---------- */
+/* Portal：把预览窗放到 body，避免被裁剪/遮挡（仅客户端渲染） */
+function PreviewPortal({ children }) {
+  const [mounted, setMounted] = useState(false)
+  const elRef = useRef(null)
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const el = document.createElement('div')
+    el.id = 'links-preview-root'
+    document.body.appendChild(el)
+    elRef.current = el
+    setMounted(true)
+    return () => { try { document.body.removeChild(el) } catch {} }
+  }, [])
+  if (!mounted || !elRef.current) return null
+  return createPortal(children, elRef.current)
+}
+
+/* 站点图标：并发竞速，谁先到用谁（仅客户端渲染） */
 function FastIcon({ url, name }) {
   const host = safeHost(url)
   const letter = letterAvatarDataURI(host?.[0] || name?.[0] || 'L', hashColor(host || name))
@@ -46,7 +70,7 @@ function FastIcon({ url, name }) {
 
   useEffect(() => {
     if (!host) { setSrc(letter); return }
-    // 为该域名预先建链（提升首包）
+    // 预连到目标域，加速首包
     if (typeof document !== 'undefined') {
       const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + host
       const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + host; pre.crossOrigin = ''
@@ -68,9 +92,7 @@ function FastIcon({ url, name }) {
       `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
       `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
     ]
-    // 总兜底超时（避免一直等）
     const globalTimer = setTimeout(() => { if (!settled) done(letter) }, 2200)
-
     for (const u of candidates) {
       const im = new Image()
       im.decoding = 'async'
@@ -96,30 +118,12 @@ function FastIcon({ url, name }) {
   )
 }
 
-/* ---------- Portal：把预览窗放到 <body>，避免被裁剪/遮挡 ---------- */
-function PreviewPortal({ children }) {
-  const [mounted, setMounted] = useState(false)
-  const elRef = useRef(null)
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    const el = document.createElement('div')
-    el.id = 'links-preview-root'
-    document.body.appendChild(el)
-    elRef.current = el
-    setMounted(true)
-    return () => { try { document.body.removeChild(el) } catch {} }
-  }, [])
-  if (!mounted || !elRef.current) return null
-  return createPortal(children, elRef.current)
-}
-
-/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，保持 40px 距离） ---------- */
+/* 计算基于鼠标的最佳预览位置（择最大区域，保持 40px 距离） */
 const MOUSE_GAP = 40
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
   const m = MOUSE_GAP
-
   const candidates = [
     { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
     { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
@@ -127,33 +131,21 @@ function computePreviewPlacement(clientX, clientY) {
     { side: 'top',    w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
   ]
   const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
-
-  // 舒适上限：不过大
   const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520)
   const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420)
   const w = Math.max(320, Math.min(best.w - m, capW))
   const h = Math.max(220, Math.min(best.h - m, capH))
-
   let left = m, top = m
-  if (best.side === 'right') {
-    left = Math.min(clientX + m, vw - w - m)
-    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
-  } else if (best.side === 'left') {
-    left = Math.max(clientX - w - m, m)
-    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
-  } else if (best.side === 'bottom') {
-    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
-    top  = Math.min(clientY + m, vh - h - m)
-  } else { // top
-    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
-    top  = Math.max(clientY - h - m, m)
-  }
-
+  if (best.side === 'right') { left = Math.min(clientX + m, vw - w - m); top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m) }
+  else if (best.side === 'left') { left = Math.max(clientX - w - m, m); top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m) }
+  else if (best.side === 'bottom') { left = Math.min(Math.max(clientX - w / 2, m), vw - w - m); top  = Math.min(clientY + m, vh - h - m) }
+  else { left = Math.min(Math.max(clientX - w / 2, m), vw - w - m); top  = Math.max(clientY - h - m, m) }
   return { left, top, w, h }
 }
 
-/* ---------- 单张卡片 ---------- */
+/* 单张卡片（SSR 安全） */
 function LinkCard({ it }) {
+  const isClient = useIsClient()
   const rafRef = useRef(null)
   const failTimerRef = useRef(null)
   const [pv, setPv] = useState({ left: 0, top: 0, w: 480, h: 320, visible: false })
@@ -162,23 +154,20 @@ function LinkCard({ it }) {
 
   const url = normalizeUrl(it.URL)
   const host = safeHost(it.URL)
+  const letter = letterAvatarDataURI(host?.[0] || it.Name?.[0] || 'L', hashColor(host || it.Name))
 
-  // 预览失败截图兜底（按预览窗口大小）
   const shot = url ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}` : ''
 
   const openPreview = (e) => {
-    if (!url) return
+    if (!isClient || !url) return
     const { clientX, clientY } = e
     setPv(prev => ({ ...computePreviewPlacement(clientX, clientY), visible: true }))
     setLoaded(false); setFailed(false)
     clearTimeout(failTimerRef.current)
-    // 1.9s 内未 onLoad → 认为受限，切换截图
-    failTimerRef.current = setTimeout(() => {
-      setFailed(prev => prev || !loaded)
-    }, 1900)
+    failTimerRef.current = setTimeout(() => { setFailed(prev => prev || !loaded) }, 1900)
   }
   const movePreview = (e) => {
-    if (!pv.visible || !url) return
+    if (!isClient || !pv.visible || !url) return
     cancelAnimationFrame(rafRef.current)
     const { clientX, clientY } = e
     rafRef.current = requestAnimationFrame(() => {
@@ -204,7 +193,9 @@ function LinkCard({ it }) {
         onMouseLeave={closePreview}
       >
         <div className="icon" aria-hidden>
-          <FastIcon url={url} name={it.Name} />
+          {isClient
+            ? <FastIcon url={url} name={it.Name} />
+            : <img src={letter} alt={it.Name} style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }} />}
         </div>
 
         <div className="meta">
@@ -213,8 +204,8 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 通过 Portal 渲染的预览窗：绝不被裁剪/遮挡 */}
-        {url && (
+        {/* 预览窗仅在客户端渲染，避免 SSR 水合问题 */}
+        {isClient && url && (
           <PreviewPortal>
             <div
               className={`preview ${pv.visible ? 'visible' : ''}`}
@@ -240,8 +231,6 @@ function LinkCard({ it }) {
 
         <style jsx>{`
           li { display:block; height:100% }
-
-          /* —— 卡片层次感：标题/副文/附属 —— */
           .card{
             position:relative; display:flex; gap:14px; align-items:flex-start;
             height:100%; min-height:100px;
@@ -251,80 +240,40 @@ function LinkCard({ it }) {
             will-change: transform, box-shadow;
             transition: transform .34s cubic-bezier(.22,.61,.36,1), box-shadow .34s ease, border-color .34s ease;
           }
-          .card:hover{
-            transform: translateY(-2px) scale(1.016);
-            border-color: var(--ring);
-            box-shadow: 0 0 0 1px var(--ring), 0 14px 34px rgba(0,0,0,.10);
-          }
+          .card:hover{ transform: translateY(-2px) scale(1.016); border-color: var(--ring); box-shadow: 0 0 0 1px var(--ring), 0 14px 34px rgba(0,0,0,.10) }
 
-          .icon{
-            flex:0 0 auto; width:48px; height:48px;
-            border-radius:12px; overflow:hidden;
-            border:1px solid var(--box);
-            background: #fff;
-          }
+          .icon{ flex:0 0 auto; width:48px; height:48px; border-radius:12px; overflow:hidden; border:1px solid var(--box); background: #fff }
           @media (prefers-color-scheme: dark){ .icon{ background:#0f172a } }
 
           .meta{ min-width:0; display:flex; flex-direction:column; gap:6px }
-          .name{
-            color:var(--txt); font-weight:900; font-size:17px; line-height:1.25;
-            letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis
-          }
-          .desc{
-            margin:0; color:var(--sub); font-size:13.5px; line-height:1.6;
-            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden
-          }
-          .host{
-            margin-top:2px; font-size:12px; color:var(--muted);
-            letter-spacing:.2px; text-transform:lowercase;
-            white-space:nowrap; overflow:hidden; text-overflow:ellipsis
-          }
+          .name{ color:var(--txt); font-weight:900; font-size:17px; line-height:1.25; letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+          .desc{ margin:0; color:var(--sub); font-size:13.5px; line-height:1.6; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+          .host{ margin-top:2px; font-size:12px; color:var(--muted); letter-spacing:.2px; text-transform:lowercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 
-          /* 预览窗（Portal 到 body） */
           .preview{
-            position: fixed;
-            z-index: 2147483000;
-            pointer-events: none;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 18px 48px rgba(0,0,0,.28);
-            border: 1px solid var(--ring);
-            background: var(--panelBg);
-            opacity: 0;
-            transform: translateY(-8px) scale(.985);
-            transition:
-              left .36s cubic-bezier(.22,.61,.36,1),
-              top .36s cubic-bezier(.22,.61,.36,1),
-              width .36s cubic-bezier(.22,.61,.36,1),
-              height .36s cubic-bezier(.22,.61,.36,1),
-              opacity .36s ease,
-              transform .36s cubic-bezier(.22,.61,.36,1);
+            position: fixed; z-index: 2147483000; pointer-events: none;
+            border-radius: 12px; overflow: hidden; box-shadow: 0 18px 48px rgba(0,0,0,.28);
+            border: 1px solid var(--ring); background: var(--panelBg);
+            opacity: 0; transform: translateY(-8px) scale(.985);
+            transition: left .36s cubic-bezier(.22,.61,.36,1), top .36s cubic-bezier(.22,.61,.36,1),
+                       width .36s cubic-bezier(.22,.61,.36,1), height .36s cubic-bezier(.22,.61,.36,1),
+                       opacity .36s ease, transform .36s cubic-bezier(.22,.61,.36,1);
             display: none;
           }
           @media (min-width: 900px){ .preview{ display:block } }
           .preview.visible{ opacity:1; transform: translateY(-2px) scale(1) }
 
-          .frame, .shot{
-            position:absolute; inset:0; width:100%; height:100%; border:0; display:block;
-            background: var(--panelBg);
-            transition: opacity .28s ease;
-          }
-          .shot.hide{ opacity:0; }
-          .frame{ opacity:0; }
-          .frame.show{ opacity:1; }
+          .frame, .shot{ position:absolute; inset:0; width:100%; height:100%; border:0; display:block; background: var(--panelBg); transition: opacity .28s ease }
+          .shot.hide{ opacity:0 } .frame{ opacity:0 } .frame.show{ opacity:1 }
 
-          .limited{
-            position:absolute; left:0; right:0; bottom:0;
-            padding: 6px 10px; font-size: 12px; color:#e5e7eb;
-            background: linear-gradient(to top, rgba(11,18,32,.9), rgba(11,18,32,.0));
-          }
+          .limited{ position:absolute; left:0; right:0; bottom:0; padding: 6px 10px; font-size: 12px; color:#e5e7eb; background: linear-gradient(to top, rgba(11,18,32,.9), rgba(11,18,32,.0)) }
         `}</style>
       </a>
     </li>
   )
 }
 
-/* ---------- 列表主体 ---------- */
+/* 列表主体 */
 function LinksBody({ data = [], categories = [] }) {
   const groups = (categories || []).map(cat => ({
     cat,
@@ -350,7 +299,6 @@ function LinksBody({ data = [], categories = [] }) {
                 <h2 className="group-title">{cat}</h2>
                 <span className="group-count">共 {items.length} 个</span>
               </div>
-
               {items.length === 0 ? (
                 <div className="group-empty">此分类暂无条目</div>
               ) : (
@@ -364,58 +312,30 @@ function LinksBody({ data = [], categories = [] }) {
       )}
 
       <style jsx>{`
-        :root{
-          --txt:#0b1220; --sub:#334155; --muted:#64748b;
-          --box:#cfd6e3; --ring:#7aa2ff; --radius:14px;
-          --panelBg:#ffffff;
-        }
-        @media (prefers-color-scheme: dark){
-          :root{
-            --txt:#e5e7eb; --sub:#cbd5e1; --muted:#94a3b8; --box:#273448; --ring:#4aa8ff;
-            --panelBg:#0f172a;
-          }
-        }
+        :root{ --txt:#0b1220; --sub:#334155; --muted:#64748b; --box:#cfd6e3; --ring:#7aa2ff; --radius:14px; --panelBg:#ffffff }
+        @media (prefers-color-scheme: dark){ :root{ --txt:#e5e7eb; --sub:#cbd5e1; --muted:#94a3b8; --box:#273448; --ring:#4aa8ff; --panelBg:#0f172a } }
 
-        .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px; }
-        .hd h1{
-          margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt)
-        }
+        .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px }
+        .hd h1{ margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt) }
         .hd p{ margin:10px 0 0; font-size:14px; color:var(--muted) }
 
-        .empty{
-          margin-top:16px; padding:20px;
-          border:1px dashed var(--box); border-radius:var(--radius);
-          color:var(--muted); text-align:center
-        }
+        .empty{ margin-top:16px; padding:20px; border:1px dashed var(--box); border-radius:var(--radius); color:var(--muted); text-align:center }
 
         .groups{ display:flex; flex-direction:column; gap:30px; margin-top:14px }
         .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px }
-        .group-title{
-          margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px
-        }
+        .group-title{ margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px }
         .group-count{ font-size:12px; color:var(--muted) }
 
-        /* 同排宽度一致 */
-        .cards{
-          list-style:none; padding:0; margin:0;
-          display:grid; gap:14px;
-          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-          align-items: stretch;
-        }
-        .group-empty{
-          border:1px solid var(--box); border-radius:var(--radius);
-          padding:12px 14px; color:var(--muted); font-size:14px
-        }
+        .cards{ list-style:none; padding:0; margin:0; display:grid; gap:14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: stretch }
+        .group-empty{ border:1px solid var(--box); border-radius:var(--radius); padding:12px 14px; color:var(--muted); font-size:14px }
 
-        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
-        :global(html.__links_hide_notion article .notion),
-        :global(html.__links_hide_notion article .notion-page){ display:none !important; }
+        :global(html.__links_hide_notion article .notion), :global(html.__links_hide_notion article .notion-page){ display:none !important }
       `}</style>
     </div>
   )
 }
 
-/* ---------- 页面导出：标题 & 全局预连接 ---------- */
+/* 页面导出：标题 + 全局预连接 */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
@@ -434,7 +354,6 @@ export default function Links(props) {
     <>
       <Head>
         <title>{pageTitle}</title>
-        {/* 提前建链，加速第三方静态源 */}
         <link rel="preconnect" href="https://www.google.com" crossOrigin="" />
         <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
@@ -446,7 +365,7 @@ export default function Links(props) {
   )
 }
 
-/* ---------- ISR & 占位页探测 ---------- */
+/* ISR & 占位页探测 */
 export async function getStaticProps({ locale }) {
   let base = {}
   let items = []
