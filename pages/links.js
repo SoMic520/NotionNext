@@ -8,7 +8,7 @@ import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-/* ---------- URL 规范化：去尾标点 & 补协议 ---------- */
+/* ---------- URL 规范化 ---------- */
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
@@ -18,7 +18,7 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* ---------- 字母头像（最终兜底；优先名称首字母大写） ---------- */
+/* ---------- 字母头像（优先名称首字母大写） ---------- */
 function hashColor(text = '') {
   let h = 0
   for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
@@ -38,7 +38,7 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 图标竞速：Notion Avatar 也作为候选源（与站点 favicon 并发） ---------- */
+/* ---------- 图标获取：Notion Avatar 优先；随后并发竞速各类 favicon ---------- */
 function IconRace({ avatar, url, name }) {
   const host = safeHost(url)
   const nameInitial = (name || '').trim().charAt(0)
@@ -49,20 +49,18 @@ function IconRace({ avatar, url, name }) {
 
   // 预连接到站点域 & Avatar 域
   useEffect(() => {
-    const links = []
-    const add = (h) => {
+    if (typeof document === 'undefined') return
+    const els = []
+    const add = h => {
       if (!h) return
       const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + h
       const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + h; pre.crossOrigin = ''
       document.head.appendChild(dns); document.head.appendChild(pre)
-      links.push(dns, pre)
+      els.push(dns, pre)
     }
-    if (typeof document !== 'undefined') {
-      add(host)
-      const avatarHost = safeHost(avatar)
-      add(avatarHost)
-      return () => { links.forEach(l => { try { document.head.removeChild(l) } catch {} }) }
-    }
+    add(host)
+    add(safeHost(avatar))
+    return () => { els.forEach(e => { try { document.head.removeChild(e) } catch {} }) }
   }, [host, avatar])
 
   useEffect(() => {
@@ -70,33 +68,47 @@ function IconRace({ avatar, url, name }) {
     const imgs = []
     const done = (u) => { if (!settled) { settled = true; setSrc(u) } }
 
-    // 候选源：Notion Avatar（若有） + 站点常见图标 + S2/DDG
-    const candidatesSet = new Set()
-    const avatarSrc = avatar ? normalizeUrl(avatar) : ''
-    if (avatarSrc) candidatesSet.add(avatarSrc)
-
-    if (host) {
-      candidatesSet.add(`https://${host}/favicon.ico`)
-      candidatesSet.add(`https://${host}/apple-touch-icon.png`)
-      candidatesSet.add(`https://${host}/favicon.png`)
-      candidatesSet.add(`https://${host}/favicon.svg`)
-      candidatesSet.add(`https://www.google.com/s2/favicons?sz=64&domain=${host}`)
-      candidatesSet.add(`https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`)
+    const startRace = () => {
+      const candidates = []
+      if (host) {
+        candidates.push(
+          `https://${host}/favicon.ico`,
+          `https://${host}/apple-touch-icon.png`,
+          `https://${host}/favicon.png`,
+          `https://${host}/favicon.svg`,
+          `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
+          `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
+        )
+      }
+      for (const u of candidates) {
+        const im = new Image()
+        im.decoding = 'async'
+        im.referrerPolicy = 'no-referrer'
+        im.onload = () => done(u)
+        im.onerror = () => {}
+        im.src = u
+        imgs.push(im)
+      }
     }
 
-    const candidates = Array.from(candidatesSet)
-    const globalTimer = setTimeout(() => { if (!settled) done(letter) }, 2200)
-
-    for (const u of candidates) {
+    const avatarSrc = avatar ? normalizeUrl(avatar) : ''
+    if (avatarSrc) {
       const im = new Image()
       im.decoding = 'async'
       im.referrerPolicy = 'no-referrer'
-      im.onload = () => done(u)
-      im.onerror = () => {}
-      im.src = u
+      im.onload = () => done(avatarSrc)
+      im.onerror = () => startRace()
+      im.src = avatarSrc
       imgs.push(im)
+      // 给 Avatar 600ms 领先窗口；若未成功则开启竞速（Avatar 若后到仍可覆盖）
+      const lead = setTimeout(() => { if (!settled) startRace() }, 600)
+      const cap = setTimeout(() => { if (!settled) done(letter) }, 2600)
+      return () => { settled = true; clearTimeout(lead); clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
+    } else {
+      startRace()
+      const cap = setTimeout(() => { if (!settled) done(letter) }, 2200)
+      return () => { settled = true; clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
     }
-    return () => { clearTimeout(globalTimer); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
   }, [avatar, url, name])
 
   return (
@@ -111,7 +123,7 @@ function IconRace({ avatar, url, name }) {
   )
 }
 
-/* ---------- Portal：把预览窗放到 <body>，避免被裁剪/遮挡 ---------- */
+/* ---------- Portal：把预览窗放到 <body> ---------- */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
   const elRef = useRef(null)
@@ -128,41 +140,27 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，保持 40px 距离） ---------- */
+/* ---------- 预览定位：与鼠标保持 40px ---------- */
 const MOUSE_GAP = 40
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
   const m = MOUSE_GAP
-
   const candidates = [
-    { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2 * m) },
-    { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2 * m) },
-    { side: 'bottom', w: Math.max(0, vw - 2 * m),       h: Math.max(0, vh - clientY - m) },
-    { side: 'top',    w: Math.max(0, vw - 2 * m),       h: Math.max(0, clientY - m) }
-  ]
-  const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
-
-  const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520)
-  const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420)
-  const w = Math.max(320, Math.min(best.w - m, capW))
-  const h = Math.max(220, Math.min(best.h - m, capH))
-
-  let left = m, top = m
-  if (best.side === 'right') {
-    left = Math.min(clientX + m, vw - w - m)
-    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
-  } else if (best.side === 'left') {
-    left = Math.max(clientX - w - m, m)
-    top  = Math.min(Math.max(clientY - h / 2, m), vh - h - m)
-  } else if (best.side === 'bottom') {
-    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
-    top  = Math.min(clientY + m, vh - h - m)
-  } else { // top
-    left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
-    top  = Math.max(clientY - h - m, m)
-  }
-
+    { side: 'right',  w: Math.max(0, vw - clientX - m), h: Math.max(0, vh - 2*m) },
+    { side: 'left',   w: Math.max(0, clientX - m),      h: Math.max(0, vh - 2*m) },
+    { side: 'bottom', w: Math.max(0, vw - 2*m),         h: Math.max(0, vh - clientY - m) },
+    { side: 'top',    w: Math.max(0, vw - 2*m),         h: Math.max(0, clientY - m) }
+  ].sort((a,b)=> b.w*b.h - a.w*a.h)[0]
+  const capW = Math.min(Math.max(Math.floor(vw*0.35), 360), 520)
+  const capH = Math.min(Math.max(Math.floor(vh*0.40), 240), 420)
+  const w = Math.max(320, Math.min(candidates.w - m, capW))
+  const h = Math.max(220, Math.min(candidates.h - m, capH))
+  let left=m, top=m
+  if (candidates.side==='right'){ left=Math.min(clientX+m, vw-w-m); top=Math.min(Math.max(clientY-h/2,m), vh-h-m) }
+  else if (candidates.side==='left'){ left=Math.max(clientX-w-m, m); top=Math.min(Math.max(clientY-h/2,m), vh-h-m) }
+  else if (candidates.side==='bottom'){ left=Math.min(Math.max(clientX-w/2,m), vw-w-m); top=Math.min(clientY+m, vh-h-m) }
+  else { left=Math.min(Math.max(clientX-w/2,m), vw-w-m); top=Math.max(clientY-h-m, m) }
   return { left, top, w, h }
 }
 
@@ -213,7 +211,6 @@ function LinkCard({ it }) {
         onMouseLeave={closePreview}
       >
         <div className="icon" aria-hidden>
-          {/* 竞速使用：Notion Avatar 也参与候选源 */}
           <IconRace avatar={it.Avatar} url={url} name={it.Name} />
         </div>
 
@@ -223,7 +220,6 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 预览（Portal 到 body） */}
         {url && (
           <PreviewPortal>
             <div
@@ -286,7 +282,6 @@ function LinkCard({ it }) {
             white-space:nowrap; overflow:hidden; text-overflow:ellipsis
           }
 
-          /* 预览窗（Portal 到 body） */
           .preview{
             position: fixed;
             z-index: 2147483000;
@@ -415,7 +410,7 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* ---------- 页面导出：标题 & 全局预连接 ---------- */
+/* ---------- 页面导出：标题 & 预连接 ---------- */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
