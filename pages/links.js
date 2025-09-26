@@ -7,7 +7,6 @@ import { DynamicLayout } from '@/themes/theme'
 import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useRouter } from 'next/router'
 
 /* ---------- 小工具 ---------- */
 function normalizeUrl(u) {
@@ -19,17 +18,7 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* 刷新检测：刷新时“重进”一次 /links，等同点击导航按钮（避免某些宿主水合问题） */
-function isHardReload() {
-  if (typeof performance === 'undefined') return false
-  const nav = performance.getEntriesByType?.('navigation')?.[0]
-  if (nav && 'type' in nav) return nav.type === 'reload'
-  // 旧接口
-  // eslint-disable-next-line deprecation/deprecation
-  return performance.navigation && performance.navigation.type === 1
-}
-
-/* SSR 安全：仅在客户端为 true，避免刷新白屏 */
+/* 仅在客户端为 true，避免刷新白屏 */
 function useIsClient() {
   const [isClient, setIsClient] = useState(false)
   useEffect(() => { setIsClient(true) }, [])
@@ -56,7 +45,7 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* Portal：把预览窗放到 body，避免被裁剪/遮挡（仅客户端渲染） */
+/* Portal：把预览窗放到 body（仅客户端渲染） */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
   const elRef = useRef(null)
@@ -73,7 +62,7 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* 站点图标：并发竞速，谁先到用谁（仅客户端渲染；绝不回落到本站 /favicon.ico） */
+/* 站点图标：并发竞速，谁先到用谁（仅客户端渲染） */
 function FastIcon({ url, name }) {
   const host = safeHost(url)
   const letter = letterAvatarDataURI(host?.[0] || name?.[0] || 'L', hashColor(host || name))
@@ -165,8 +154,6 @@ function LinkCard({ it }) {
 
   const url = normalizeUrl(it.URL)
   const host = safeHost(it.URL)
-  const letter = letterAvatarDataURI(host?.[0] || it.Name?.[0] || 'L', hashColor(host || it.Name))
-
   const shot = url ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}` : ''
 
   const openPreview = (e) => {
@@ -206,7 +193,7 @@ function LinkCard({ it }) {
         <div className="icon" aria-hidden>
           {isClient
             ? <FastIcon url={url} name={it.Name} />
-            : <img src={letter} alt={it.Name} style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }} />}
+            : <img src={letterAvatarDataURI((host||it.Name||'L')[0], hashColor(host||it.Name))} alt={it.Name} style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }} />}
         </div>
 
         <div className="meta">
@@ -215,16 +202,17 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
+        {/* 预览窗仅在客户端渲染（注意：样式使用全局类名） */}
         {isClient && url && (
           <PreviewPortal>
             <div
-              className={`preview ${pv.visible ? 'visible' : ''}`}
+              className={`links-preview ${pv.visible ? 'visible' : ''}`}
               style={{ left: pv.left, top: pv.top, width: pv.w, height: pv.h }}
               aria-hidden
             >
-              {shot && (<img className={`shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />)}
+              {shot && (<img className={`links-preview-shot ${loaded && !failed ? 'hide' : ''}`} src={shot} alt="" aria-hidden />)}
               <iframe
-                className={`frame ${loaded && !failed ? 'show' : ''}`}
+                className={`links-preview-frame ${loaded && !failed ? 'show' : ''}`}
                 src={url}
                 title={it.Name}
                 loading="lazy"
@@ -232,7 +220,7 @@ function LinkCard({ it }) {
                 sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-pointer-lock allow-modals"
                 onLoad={() => { setLoaded(true); clearTimeout(failTimerRef.current) }}
               />
-              {failed && <div className="limited">该站点禁止内嵌预览，已显示截图。点击卡片访问完整页面。</div>}
+              {failed && <div className="links-preview-limited">该站点禁止内嵌预览，已显示截图。点击卡片访问完整页面。</div>}
             </div>
           </PreviewPortal>
         )}
@@ -257,24 +245,6 @@ function LinkCard({ it }) {
           .name{ color:var(--txt); font-weight:900; font-size:17px; line-height:1.25; letter-spacing:.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
           .desc{ margin:0; color:var(--sub); font-size:13.5px; line-height:1.6; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
           .host{ margin-top:2px; font-size:12px; color:var(--muted); letter-spacing:.2px; text-transform:lowercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
-
-          .preview{
-            position: fixed; z-index: 2147483000; pointer-events: none;
-            border-radius: 12px; overflow: hidden; box-shadow: 0 18px 48px rgba(0,0,0,.28);
-            border: 1px solid var(--ring); background: var(--panelBg);
-            opacity: 0; transform: translateY(-8px) scale(.985);
-            transition: left .36s cubic-bezier(.22,.61,.36,1), top .36s cubic-bezier(.22,.61,.36,1),
-                       width .36s cubic-bezier(.22,.61,.36,1), height .36s cubic-bezier(.22,.61,.36,1),
-                       opacity .36s ease, transform .36s cubic-bezier(.22,.61,.36,1);
-            display: none;
-          }
-          @media (min-width: 900px){ .preview{ display:block } }
-          .preview.visible{ opacity:1; transform: translateY(-2px) scale(1) }
-
-          .frame, .shot{ position:absolute; inset:0; width:100%; height:100%; border:0; display:block; background: var(--panelBg); transition: opacity .28s ease }
-          .shot.hide{ opacity:0 } .frame{ opacity:0 } .frame.show{ opacity:1 }
-
-          .limited{ position:absolute; left:0; right:0; bottom:0; padding: 6px 10px; font-size: 12px; color:#e5e7eb; background: linear-gradient(to top, rgba(11,18,32,.9), rgba(11,18,32,.0)) }
         `}</style>
       </a>
     </li>
@@ -339,29 +309,59 @@ function LinksBody({ data = [], categories = [] }) {
 
         :global(html.__links_hide_notion article .notion), :global(html.__links_hide_notion article .notion-page){ display:none !important }
       `}</style>
+
+      {/* ★ 关键：Portal 内容使用全局样式，避免因 styled-jsx 作用域导致刷新时预览层“裸奔”覆盖页面 */}
+      <style jsx global>{`
+        .links-preview{
+          position: fixed;
+          z-index: 2147483000;
+          pointer-events: none;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 18px 48px rgba(0,0,0,.28);
+          border: 1px solid var(--ring);
+          background: var(--panelBg);
+          opacity: 0;
+          transform: translateY(-8px) scale(.985);
+          transition:
+            left .36s cubic-bezier(.22,.61,.36,1),
+            top .36s cubic-bezier(.22,.61,.36,1),
+            width .36s cubic-bezier(.22,.61,.36,1),
+            height .36s cubic-bezier(.22,.61,.36,1),
+            opacity .36s ease,
+            transform .36s cubic-bezier(.22,.61,.36,1);
+          display: none;
+        }
+        @media (min-width: 900px){
+          .links-preview{ display:block }
+        }
+        .links-preview.visible{ opacity:1; transform: translateY(-2px) scale(1) }
+
+        .links-preview-frame,
+        .links-preview-shot{
+          position:absolute; inset:0; width:100%; height:100%;
+          border:0; display:block; background: var(--panelBg);
+          transition: opacity .28s ease;
+        }
+        .links-preview-shot.hide{ opacity:0 }
+        .links-preview-frame{ opacity:0 }
+        .links-preview-frame.show{ opacity:1 }
+
+        .links-preview-limited{
+          position:absolute; left:0; right:0; bottom:0;
+          padding: 6px 10px; font-size: 12px; color:#e5e7eb;
+          background: linear-gradient(to top, rgba(11,18,32,.9), rgba(11,18,32,.0));
+        }
+      `}</style>
     </div>
   )
 }
 
-/* 页面导出：标题 + 处理“刷新即重进” + 主题外壳 */
+/* 页面导出：标题 + 主题外壳 */
 export default function Links(props) {
-  const router = useRouter()
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
   const pageTitle = `${siteTitle} | Links`
-
-  // 刷新 → 视为“点击友情链接按钮再进一次”，避免某些宿主白屏
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const already = router.asPath.includes('__re=1')
-    if (isHardReload() && !already) {
-      const url = router.asPath + (router.asPath.includes('?') ? '&' : '?') + '__re=1'
-      // 使用 shallow+scroll=false，等同一次客户端跳转
-      router.replace(url, undefined, { shallow: true, scroll: true })
-    }
-  // 仅在首次挂载判定
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   useEffect(() => {
     if (props.__hasSlug && typeof document !== 'undefined') {
