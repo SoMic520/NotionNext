@@ -18,7 +18,7 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* ---------- 简易 hash → 颜色，用于字母兜底图标 ---------- */
+/* ---------- 字母头像（最终兜底，不再回落到本站 /favicon.ico） ---------- */
 function hashColor(text = '') {
   let h = 0
   for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
@@ -38,6 +38,64 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
+/* ---------- 更快的站点图标：并发竞速（root/apple-touch/S2/DDG），谁先加载用谁 ---------- */
+function FastIcon({ url, name }) {
+  const host = safeHost(url)
+  const letter = letterAvatarDataURI(host?.[0] || name?.[0] || 'L', hashColor(host || name))
+  const [src, setSrc] = useState(letter)
+
+  useEffect(() => {
+    if (!host) { setSrc(letter); return }
+    // 为该域名预先建链（提升首包）
+    if (typeof document !== 'undefined') {
+      const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + host
+      const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + host; pre.crossOrigin = ''
+      document.head.appendChild(dns); document.head.appendChild(pre)
+      return () => { try { document.head.removeChild(dns); document.head.removeChild(pre) } catch {} }
+    }
+  }, [host])
+
+  useEffect(() => {
+    if (!host) return
+    let settled = false
+    const imgs = []
+    const done = (u) => { if (!settled) { settled = true; setSrc(u) } }
+    const candidates = [
+      `https://${host}/favicon.ico`,
+      `https://${host}/apple-touch-icon.png`,
+      `https://${host}/favicon.png`,
+      `https://${host}/favicon.svg`,
+      `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
+      `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
+    ]
+    // 总兜底超时（避免一直等）
+    const globalTimer = setTimeout(() => { if (!settled) done(letter) }, 2200)
+
+    for (const u of candidates) {
+      const im = new Image()
+      im.decoding = 'async'
+      im.referrerPolicy = 'no-referrer'
+      im.onload = () => done(u)
+      im.onerror = () => {}
+      im.src = u
+      imgs.push(im)
+    }
+    return () => { clearTimeout(globalTimer); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
+  }, [host])
+
+  return (
+    <img
+      src={src}
+      alt={name}
+      title={host || name}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
+    />
+  )
+}
+
 /* ---------- Portal：把预览窗放到 <body>，避免被裁剪/遮挡 ---------- */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
@@ -55,8 +113,8 @@ function PreviewPortal({ children }) {
   return createPortal(children, elRef.current)
 }
 
-/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，近距离） ---------- */
-const MOUSE_GAP = 40 // 与鼠标保持 40px 间距
+/* ---------- 计算基于鼠标的最佳预览位置（择最大区域，保持 40px 距离） ---------- */
+const MOUSE_GAP = 40
 function computePreviewPlacement(clientX, clientY) {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -70,9 +128,9 @@ function computePreviewPlacement(clientX, clientY) {
   ]
   const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
 
-  // 尺寸上限：不夸张，刚好
-  const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520) // 360~520
-  const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420) // 240~420
+  // 舒适上限：不过大
+  const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520)
+  const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420)
   const w = Math.max(320, Math.min(best.w - m, capW))
   const h = Math.max(220, Math.min(best.h - m, capH))
 
@@ -94,35 +152,7 @@ function computePreviewPlacement(clientX, clientY) {
   return { left, top, w, h }
 }
 
-/* ---------- 图标组件：更快兜底（S2 → DuckDuckGo → root）+ 最终字母头像，不再回落到本网站 logo ---------- */
-function SmartIcon({ url, name }) {
-  const host = safeHost(url)
-  const s2   = host ? `https://www.google.com/s2/favicons?sz=64&domain=${host}` : ''
-  const ddg  = host ? `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico` : ''
-  const root = host ? `https://${host}/favicon.ico` : ''
-  const letter = letterAvatarDataURI(host?.[0] || name?.[0] || 'L', hashColor(host || name))
-
-  const [src, setSrc] = useState(s2 || ddg || root || letter)
-  const [step, setStep] = useState(0)
-  return (
-    <img
-      src={src}
-      alt={name}
-      title={host || name}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={() => {
-        if (step === 0 && ddg) { setSrc(ddg); setStep(1); return }
-        if (step === 1 && root){ setSrc(root); setStep(2); return }
-        if (step <= 2)        { setSrc(letter); setStep(3); return }
-      }}
-      style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
-    />
-  )
-}
-
-/* ---------- 单张卡片：丝滑缩放 + 自适应预览 + 失败截图兜底 ---------- */
+/* ---------- 单张卡片 ---------- */
 function LinkCard({ it }) {
   const rafRef = useRef(null)
   const failTimerRef = useRef(null)
@@ -174,7 +204,7 @@ function LinkCard({ it }) {
         onMouseLeave={closePreview}
       >
         <div className="icon" aria-hidden>
-          <SmartIcon url={url} name={it.Name} />
+          <FastIcon url={url} name={it.Name} />
         </div>
 
         <div className="meta">
@@ -211,7 +241,7 @@ function LinkCard({ it }) {
         <style jsx>{`
           li { display:block; height:100% }
 
-          /* —— 卡片层次感：更清晰的标题/副文/附属 —— */
+          /* —— 卡片层次感：标题/副文/附属 —— */
           .card{
             position:relative; display:flex; gap:14px; align-items:flex-start;
             height:100%; min-height:100px;
@@ -385,7 +415,7 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* ---------- 页面导出：设置标题“Links”并预连接图标域名，提升图标加载速度 ---------- */
+/* ---------- 页面导出：标题 & 全局预连接 ---------- */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
@@ -404,7 +434,7 @@ export default function Links(props) {
     <>
       <Head>
         <title>{pageTitle}</title>
-        {/* 提前建链，加速图标/截图加载 */}
+        {/* 提前建链，加速第三方静态源 */}
         <link rel="preconnect" href="https://www.google.com" crossOrigin="" />
         <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
