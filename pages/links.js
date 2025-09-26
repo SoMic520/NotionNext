@@ -8,7 +8,7 @@ import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-/* ---------- URL 规范化 ---------- */
+/* ---------- URL 规范化（站点 URL 用） ---------- */
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
@@ -17,6 +17,28 @@ function normalizeUrl(u) {
   return s
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
+
+/* ---------- Avatar 源解析：支持 /public/links-ico 本地文件 ---------- */
+/** 规则：
+ * 1) http/https 直接用
+ * 2) 以 "/" 开头：若不是 "/links-ico/" 前缀，则自动补为 "/links-ico/<...>"
+ * 3) 仅文件名（如 "foo.png"）：自动转为 "/links-ico/foo.png"
+ * 4) 其他情况返回空串（触发后续回落）
+ */
+function resolveAvatarSrc(raw) {
+  if (!raw) return ''
+  let s = String(raw).trim()
+  s = s.replace(/[)\]\}，。；、？！,.;:]+$/g, '')
+  if (/^https?:\/\//i.test(s)) return s
+  if (s.startsWith('/')) {
+    return s.startsWith('/links-ico/') ? s : `/links-ico${s}`
+  }
+  if (/^[\w.-]+\.(png|jpe?g|gif|svg|ico|webp)$/i.test(s)) {
+    return `/links-ico/${s}`
+  }
+  return ''
+}
+function isHttpUrl(s) { return /^https?:\/\//i.test(s || '') }
 
 /* ---------- 字母头像（优先名称首字母大写） ---------- */
 function hashColor(text = '') {
@@ -38,7 +60,7 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 图标获取：Notion Avatar 优先；随后并发竞速各类 favicon ---------- */
+/* ---------- 图标获取：Notion Avatar（支持 /public/links-ico）优先；随后并发竞速 favicon ---------- */
 function IconRace({ avatar, url, name }) {
   const host = safeHost(url)
   const nameInitial = (name || '').trim().charAt(0)
@@ -47,7 +69,10 @@ function IconRace({ avatar, url, name }) {
   const letter = letterAvatarDataURI(initial, hashColor(name || host))
   const [src, setSrc] = useState(letter)
 
-  // 预连接到站点域 & Avatar 域
+  // 根据头像值解析出最终可用 src（本地或远程）
+  const avatarSrc = resolveAvatarSrc(avatar)
+
+  // 预连接到站点域 & 远程 Avatar 域（本地头像无需预连）
   useEffect(() => {
     if (typeof document === 'undefined') return
     const els = []
@@ -59,9 +84,9 @@ function IconRace({ avatar, url, name }) {
       els.push(dns, pre)
     }
     add(host)
-    add(safeHost(avatar))
+    if (isHttpUrl(avatarSrc)) add(safeHost(avatarSrc))
     return () => { els.forEach(e => { try { document.head.removeChild(e) } catch {} }) }
-  }, [host, avatar])
+  }, [host, avatarSrc])
 
   useEffect(() => {
     let settled = false
@@ -91,7 +116,6 @@ function IconRace({ avatar, url, name }) {
       }
     }
 
-    const avatarSrc = avatar ? normalizeUrl(avatar) : ''
     if (avatarSrc) {
       const im = new Image()
       im.decoding = 'async'
@@ -109,7 +133,7 @@ function IconRace({ avatar, url, name }) {
       const cap = setTimeout(() => { if (!settled) done(letter) }, 2200)
       return () => { settled = true; clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
     }
-  }, [avatar, url, name])
+  }, [avatarSrc, url, name])
 
   return (
     <img
@@ -211,6 +235,7 @@ function LinkCard({ it }) {
         onMouseLeave={closePreview}
       >
         <div className="icon" aria-hidden>
+          {/* 头像优先使用 Notion Avatar（可指向 /public/links-ico），再回落 favicon 竞速 */}
           <IconRace avatar={it.Avatar} url={url} name={it.Name} />
         </div>
 
