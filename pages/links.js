@@ -8,7 +8,7 @@ import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-/* ---------- URL 规范化（站点 URL 用） ---------- */
+/* ---------- URL 规范化 ---------- */
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
@@ -17,28 +17,6 @@ function normalizeUrl(u) {
   return s
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
-
-/* ---------- Avatar 源解析：支持 /public/links-ico 本地文件 ---------- */
-/** 规则：
- * 1) http/https 直接用
- * 2) 以 "/" 开头：若不是 "/links-ico/" 前缀，则自动补为 "/links-ico/<...>"
- * 3) 仅文件名（如 "foo.png"）：自动转为 "/links-ico/foo.png"
- * 4) 其他情况返回空串（触发后续回落）
- */
-function resolveAvatarSrc(raw) {
-  if (!raw) return ''
-  let s = String(raw).trim()
-  s = s.replace(/[)\]\}，。；、？！,.;:]+$/g, '')
-  if (/^https?:\/\//i.test(s)) return s
-  if (s.startsWith('/')) {
-    return s.startsWith('/links-ico/') ? s : `/links-ico${s}`
-  }
-  if (/^[\w.-]+\.(png|jpe?g|gif|svg|ico|webp)$/i.test(s)) {
-    return `/links-ico/${s}`
-  }
-  return ''
-}
-function isHttpUrl(s) { return /^https?:\/\//i.test(s || '') }
 
 /* ---------- 字母头像（优先名称首字母大写） ---------- */
 function hashColor(text = '') {
@@ -60,7 +38,7 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 图标获取：Notion Avatar（支持 /public/links-ico）优先；随后并发竞速 favicon ---------- */
+/* ---------- 图标获取：Notion Avatar 优先；随后从 /public/links-ico 回退 ---------- */
 function IconRace({ avatar, url, name }) {
   const host = safeHost(url)
   const nameInitial = (name || '').trim().charAt(0)
@@ -93,6 +71,9 @@ function IconRace({ avatar, url, name }) {
     const imgs = []
     const done = (u) => { if (!settled) { settled = true; setSrc(u) } }
 
+    // Avatar URL 获取失败后回退到 public/links-ico
+    const fallbackAvatarSrc = avatarSrc ? avatarSrc : `/links-ico/${name?.toLowerCase() || 'default'}.png`
+
     const startRace = () => {
       const candidates = []
       if (host) {
@@ -116,12 +97,13 @@ function IconRace({ avatar, url, name }) {
       }
     }
 
+    // 若 Avatar URL 存在且可用，则使用它；否则回退到默认图标
     if (avatarSrc) {
       const im = new Image()
       im.decoding = 'async'
       im.referrerPolicy = 'no-referrer'
       im.onload = () => done(avatarSrc)
-      im.onerror = () => startRace()
+      im.onerror = () => done(fallbackAvatarSrc)
       im.src = avatarSrc
       imgs.push(im)
       // 给 Avatar 600ms 领先窗口；若未成功则开启竞速（Avatar 若后到仍可覆盖）
@@ -129,6 +111,8 @@ function IconRace({ avatar, url, name }) {
       const cap = setTimeout(() => { if (!settled) done(letter) }, 2600)
       return () => { settled = true; clearTimeout(lead); clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
     } else {
+      // 如果 Avatar URL 不可用，直接使用本地图标路径
+      done(fallbackAvatarSrc)
       startRace()
       const cap = setTimeout(() => { if (!settled) done(letter) }, 2200)
       return () => { settled = true; clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
@@ -428,6 +412,7 @@ function LinksBody({ data = [], categories = [] }) {
           padding:12px 14px; color:var(--muted); font-size:14px
         }
 
+        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
         :global(html.__links_hide_notion article .notion),
         :global(html.__links_hide_notion article .notion-page){ display:none !important; }
       `}</style>
