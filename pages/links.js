@@ -1,3 +1,4 @@
+// /pages/links.js
 import Head from 'next/head'
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
@@ -7,7 +8,7 @@ import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-/* ---------- URL 规范化 ---------- */
+// Normalization for URLs
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
@@ -17,13 +18,15 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* ---------- 字母头像（优先名称首字母大写） ---------- */
+// Color hash for the avatar
 function hashColor(text = '') {
   let h = 0
   for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
   const hue = Math.abs(h) % 360
   return `hsl(${hue} 70% 45%)`
 }
+
+// Generate letter-based avatars
 function letterAvatarDataURI(label = 'L', bg = '#888') {
   const txt = (label || 'L').toUpperCase().slice(0, 1)
   const svg = encodeURIComponent( 
@@ -36,8 +39,8 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   ) 
   return `data:image/svg+xml;charset=utf-8,${svg}` 
 } 
- 
-/* ---------- 图标获取：Notion Avatar 优先；随后并发竞速各类 favicon ---------- */ 
+
+// Icon selection logic
 function IconRace({ avatar, url, name }) { 
   const host = safeHost(url) 
   const nameInitial = (name || '').trim().charAt(0) 
@@ -46,7 +49,7 @@ function IconRace({ avatar, url, name }) {
   const letter = letterAvatarDataURI(initial, hashColor(name || host)) 
   const [src, setSrc] = useState(letter) 
 
-  // 预连接到站点域 & Avatar 域 
+  // Pre-connect to domains
   useEffect(() => { 
     if (typeof document === 'undefined') return 
     const els = [] 
@@ -99,7 +102,7 @@ function IconRace({ avatar, url, name }) {
       im.onerror = () => startRace()  
       im.src = avatarSrc  
       imgs.push(im)  
-      // 给 Avatar 600ms 领先窗口；若未成功则开启竞速（Avatar 若后到仍可覆盖）  
+      // Avatar gets 600ms to load, else we start favicon race  
       const lead = setTimeout(() => { if (!settled) startRace() }, 600)  
       const cap = setTimeout(() => { if (!settled) done(letter) }, 2600)  
       return () => { settled = true; clearTimeout(lead); clearTimeout(cap); imgs.forEach(i => { i.onload = null; i.onerror = null }) }  
@@ -428,9 +431,9 @@ export default function Links(props) {
     <>  
       <Head>  
         <title>{pageTitle}</title>  
-        https://www.google.com" crossOrigin="" />  
-        https://icons.duckduckgo.com" crossOrigin="" />  
-        https://s.wordpress.com" crossOrigin="" />  
+        <link rel="icon" href="https://www.google.com/favicon.ico" crossOrigin="anonymous" />  
+        <link rel="icon" href="https://icons.duckduckgo.com/favicon.ico" crossOrigin="anonymous" />  
+        <link rel="icon" href="https://s.wordpress.com/favicon.ico" crossOrigin="anonymous" />  
       </Head>  
       {props.__hasSlug
         ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
