@@ -91,11 +91,7 @@ function IconRace({ avatar, url, name }) {
       }
     }
 
-    // 处理从 GitHub 获取头像的情况
-    const avatarSrc = avatar && avatar.startsWith("/links-ico/")
-      ? `https://raw.githubusercontent.com/SoMic520/NotionNext/main/public${avatar}`
-      : avatar ? normalizeUrl(avatar) : ''
-
+    const avatarSrc = avatar ? normalizeUrl(avatar) : ''
     if (avatarSrc) {
       const im = new Image()
       im.decoding = 'async'
@@ -122,12 +118,12 @@ function IconRace({ avatar, url, name }) {
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+      style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
     />
   )
 }
 
-/* ---------- Portal：将预览窗放到 <body> ---------- */
+/* ---------- Portal：把预览窗放到 <body> ---------- */
 function PreviewPortal({ children }) {
   const [mounted, setMounted] = useState(false)
   const elRef = useRef(null)
@@ -224,7 +220,6 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
-        {/* 通过 Portal 渲染的预览窗：绝不被裁剪/遮挡 */}
         {url && (
           <PreviewPortal>
             <div
@@ -383,9 +378,7 @@ function LinksBody({ data = [], categories = [] }) {
         }
 
         .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px; }
-        .hd h1{
-          margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt)
-        }
+        .hd h1{ margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt) }
         .hd p{ margin:10px 0 0; font-size:14px; color:var(--muted) }
 
         .empty{
@@ -396,9 +389,7 @@ function LinksBody({ data = [], categories = [] }) {
 
         .groups{ display:flex; flex-direction:column; gap:30px; margin-top:14px }
         .group-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px }
-        .group-title{
-          margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px
-        }
+        .group-title{ margin:0; font-size:19px; font-weight:800; color:var(--txt); letter-spacing:.2px }
         .group-count{ font-size:12px; color:var(--muted) }
 
         .cards{
@@ -412,7 +403,6 @@ function LinksBody({ data = [], categories = [] }) {
           padding:12px 14px; color:var(--muted); font-size:14px
         }
 
-        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
         :global(html.__links_hide_notion article .notion),
         :global(html.__links_hide_notion article .notion-page){ display:none !important; }
       `}</style>
@@ -439,10 +429,9 @@ export default function Links(props) {
     <>
       <Head>
         <title>{pageTitle}</title>
-        {/* 提前建链，加速第三方静态源 */}
-        <link rel="dns-prefetch" href="https://www.google.com" />
-        <link rel="dns-prefetch" href="https://icons.duckduckgo.com" />
-        <link rel="dns-prefetch" href="https://s.wordpress.com" />
+        <link rel="preconnect" href="https://www.google.com" crossOrigin="" />
+        <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
+        <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
       </Head>
       {props.__hasSlug
         ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
