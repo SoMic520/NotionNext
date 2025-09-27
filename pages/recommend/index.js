@@ -5,16 +5,18 @@ import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
 import Head from 'next/head' // 引入 Head 组件
 
-export default function Recommend(props) {
+export default function LayoutRecommend(props) {
   return (
     <>
-      {/* 修改页面的 <title> 为 Hot */}
+      {/* 修改页面的 <title> 为 SoMic Studio | Hot */}
       <Head>
-        <title>Hot</title>
+        <title>SoMic Studio | Hot</title>
       </Head>
+
+      {/* 渲染页面的内容 */}
       <DynamicLayout
         theme={siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)}
-        layoutName='LayoutRecommend'
+        layoutName="LayoutRecommend"
         {...props}
       />
     </>
