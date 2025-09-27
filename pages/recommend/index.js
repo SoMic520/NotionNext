@@ -3,14 +3,21 @@ import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
+import Head from 'next/head' // 引入 Head 组件
 
-export default function Recommend (props) {
+export default function Recommend(props) {
   return (
-    <DynamicLayout
-      theme={siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)}
-      layoutName='LayoutRecommend'
-      {...props}
-    />
+    <>
+      {/* 修改页面的 <title> 为 Hot */}
+      <Head>
+        <title>Hot</title>
+      </Head>
+      <DynamicLayout
+        theme={siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)}
+        layoutName='LayoutRecommend'
+        {...props}
+      />
+    </>
   )
 }
 
