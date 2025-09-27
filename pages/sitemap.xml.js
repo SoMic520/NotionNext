@@ -4,9 +4,9 @@ import { getGlobalData } from '@/lib/db/getSiteData'
 import { extractLangId, extractLangPrefix } from '@/lib/utils/pageId'
 import { getServerSideSitemap } from 'next-sitemap'
 
-export const getServerSideProps = async ctx => {
-  let fields = []
-  const siteIds = BLOG.NOTION_PAGE_ID.split(',')
+export const getServerSideProps = async (ctx) => {
+  let fields = [] // 用于存储所有 URL 数据
+  const siteIds = BLOG.NOTION_PAGE_ID.split(',') // 处理多个站点ID
 
   for (let index = 0; index < siteIds.length; index++) {
     const siteId = siteIds[index]
@@ -15,29 +15,32 @@ export const getServerSideProps = async ctx => {
     let siteData
 
     try {
+      // 获取站点的全局数据
       siteData = await getGlobalData({ pageId: id, from: 'sitemap.xml' })
     } catch (error) {
       console.error('Error fetching site data for:', siteId)
-      continue; // Skip this site and continue with the next one
+      continue; // 如果出错，跳过该站点
     }
 
+    // 获取站点的 URL 配置
     const link = siteConfig(
       'LINK',
       siteData?.siteInfo?.link,
       siteData.NOTION_CONFIG
     )
+
+    // 生成本地化的站点地图
     const localeFields = generateLocalesSitemap(link, siteData.allPages, locale)
-    fields = fields.concat(localeFields)
+    fields = fields.concat(localeFields) // 合并到最终的字段
   }
 
+  // 确保 URL 唯一性
   fields = getUniqueFields(fields)
 
-  // 缓存
-  ctx.res.setHeader(
-    'Cache-Control',
-    'public, max-age=3600, stale-while-revalidate=59'
-  )
-  
+  // 设置缓存控制（1小时有效，59秒过期）
+  ctx.res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=59')
+
+  // 返回站点地图数据
   return getServerSideSitemap(ctx, fields)
 }
 
@@ -47,11 +50,14 @@ function generateLocalesSitemap(link, allPages, locale) {
     link = link.slice(0, -1)
   }
 
+  // 确保 locale 以斜杠开头
   if (locale && locale.length > 0 && !locale.startsWith('/')) {
     locale = '/' + locale
   }
 
   const dateNow = new Date().toISOString().split('T')[0]
+
+  // 默认页面 URL 配置
   const defaultFields = [
     {
       loc: `${link}${locale}`,
@@ -90,6 +96,8 @@ function generateLocalesSitemap(link, allPages, locale) {
       priority: '0.7'
     }
   ]
+
+  // 为每篇发布的文章生成站点地图 URL
   const postFields =
     allPages
       ?.filter(p => p.status === BLOG.NOTION_PROPERTY_NAME.status_publish)
@@ -106,7 +114,7 @@ function generateLocalesSitemap(link, allPages, locale) {
         }
       }) ?? []
 
-  return defaultFields.concat(postFields)
+  return defaultFields.concat(postFields) // 合并所有 URL
 }
 
 function getUniqueFields(fields) {
@@ -120,7 +128,7 @@ function getUniqueFields(fields) {
     }
   })
 
-  return Array.from(uniqueFieldsMap.values())
+  return Array.from(uniqueFieldsMap.values()) // 返回唯一的 URL
 }
 
 export default () => {}
