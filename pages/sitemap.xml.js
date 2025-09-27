@@ -1,4 +1,3 @@
-// pages/sitemap.xml.js
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
@@ -13,11 +12,15 @@ export const getServerSideProps = async ctx => {
     const siteId = siteIds[index]
     const id = extractLangId(siteId)
     const locale = extractLangPrefix(siteId)
-    // 第一个id站点默认语言
-    const siteData = await getGlobalData({
-      pageId: id,
-      from: 'sitemap.xml'
-    })
+    let siteData
+
+    try {
+      siteData = await getGlobalData({ pageId: id, from: 'sitemap.xml' })
+    } catch (error) {
+      console.error('Error fetching site data for:', siteId)
+      continue; // Skip this site and continue with the next one
+    }
+
     const link = siteConfig(
       'LINK',
       siteData?.siteInfo?.link,
@@ -27,13 +30,14 @@ export const getServerSideProps = async ctx => {
     fields = fields.concat(localeFields)
   }
 
-  fields = getUniqueFields(fields);
+  fields = getUniqueFields(fields)
 
   // 缓存
   ctx.res.setHeader(
     'Cache-Control',
     'public, max-age=3600, stale-while-revalidate=59'
   )
+  
   return getServerSideSitemap(ctx, fields)
 }
 
@@ -43,9 +47,10 @@ function generateLocalesSitemap(link, allPages, locale) {
     link = link.slice(0, -1)
   }
 
-  if (locale && locale.length > 0 && locale.indexOf('/') !== 0) {
+  if (locale && locale.length > 0 && !locale.startsWith('/')) {
     locale = '/' + locale
   }
+
   const dateNow = new Date().toISOString().split('T')[0]
   const defaultFields = [
     {
@@ -92,9 +97,10 @@ function generateLocalesSitemap(link, allPages, locale) {
         const slugWithoutLeadingSlash = post?.slug.startsWith('/')
           ? post?.slug?.slice(1)
           : post.slug
+        const lastmod = post?.publishDay ? new Date(post?.publishDay).toISOString().split('T')[0] : dateNow
         return {
           loc: `${link}${locale}/${slugWithoutLeadingSlash}`,
-          lastmod: new Date(post?.publishDay).toISOString().split('T')[0],
+          lastmod,
           changefreq: 'daily',
           priority: '0.7'
         }
@@ -104,17 +110,17 @@ function generateLocalesSitemap(link, allPages, locale) {
 }
 
 function getUniqueFields(fields) {
-  const uniqueFieldsMap = new Map();
+  const uniqueFieldsMap = new Map()
 
   fields.forEach(field => {
-    const existingField = uniqueFieldsMap.get(field.loc);
+    const existingField = uniqueFieldsMap.get(field.loc)
 
     if (!existingField || new Date(field.lastmod) > new Date(existingField.lastmod)) {
-      uniqueFieldsMap.set(field.loc, field);
+      uniqueFieldsMap.set(field.loc, field)
     }
-  });
+  })
 
-  return Array.from(uniqueFieldsMap.values());
+  return Array.from(uniqueFieldsMap.values())
 }
 
 export default () => {}
