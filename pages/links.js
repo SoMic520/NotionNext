@@ -3,8 +3,9 @@ import Head from 'next/head'
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { getGlobalData } from '@/lib/db/getSiteData'
-import { DynamicLayout } from '@/themes/theme'
 import getLinksAndCategories from '@/lib/links'
+import { getPost } from '@/lib/notion/getNotionPost'
+import { DynamicLayout } from '@/themes/theme'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -412,15 +413,13 @@ function LinksBody({ data = [], categories = [] }) {
 
 /* ---------- 页面导出：标题 & 预连接 ---------- */
 export default function Links(props) {
-  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
   const pageTitle = `${siteTitle} | Links`
 
   useEffect(() => {
-    if (props.__hasSlug && typeof document !== 'undefined') {
-      document.documentElement.classList.add('__links_hide_notion')
-      return () => document.documentElement.classList.remove('__links_hide_notion')
-    }
+    if (!props.__hasSlug || typeof document === 'undefined') return
+    document.documentElement.classList.add('__links_hide_notion')
+    return () => document.documentElement.classList.remove('__links_hide_notion')
   }, [props.__hasSlug])
 
   const body = <LinksBody data={props.items} categories={props.categories} />
@@ -434,7 +433,15 @@ export default function Links(props) {
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
       </Head>
       {props.__hasSlug
-        ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
+        ? (
+          <DynamicLayout
+            theme={siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)}
+            layoutName="LayoutSlug"
+            {...props}
+          >
+            {body}
+          </DynamicLayout>
+          )
         : body}
     </>
   )
@@ -446,15 +453,23 @@ export async function getStaticProps({ locale }) {
   let items = []
   let categories = []
   let hasSlug = false
+  let slugPost = null
 
   try {
     base = await getGlobalData({ from: 'links', locale })
     const pages = base?.allPages || base?.pages || []
-    hasSlug = Array.isArray(pages) && pages.some(p =>
-      (p?.slug === 'links' || p?.slug?.value === 'links') &&
-      (p?.type === 'Page' || p?.type?.value === 'Page') &&
-      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
-    )
+    const slugPage = Array.isArray(pages)
+      ? pages.find(p =>
+        (p?.slug === 'links' || p?.slug?.value === 'links') &&
+        (p?.type === 'Page' || p?.type?.value === 'Page') &&
+        (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
+      )
+      : null
+
+    if (slugPage) {
+      slugPost = await getPost(slugPage.id)
+      hasSlug = !!slugPost
+    }
   } catch (e) {
     base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
   }
@@ -468,5 +483,5 @@ export async function getStaticProps({ locale }) {
     categories = []
   }
 
-  return { props: { ...base, items, categories, __hasSlug: hasSlug }, revalidate: 600 }
+  return { props: { ...base, items, categories, __hasSlug: hasSlug, post: slugPost }, revalidate: 600 }
 }
