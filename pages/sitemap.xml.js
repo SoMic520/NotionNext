@@ -5,57 +5,19 @@ import { extractLangId, extractLangPrefix } from '@/lib/utils/pageId'
 import { getServerSideSitemap } from 'next-sitemap'
 
 /**
- * 规范化域名链接，移除尾部斜杠
- */
-function normalizeLink(link) {
-  if (!link) return ''
-  return link.endsWith('/') ? link.slice(0, -1) : link
-}
-
-/**
  * 将 URL 编码并转义为可在 XML 中安全使用的字符串
  * @param {string} url
  * @returns {string}
  */
 function formatSitemapUrl(url) {
   if (!url) return ''
-  // 去除 XML 不允许的控制字符
-  const sanitized = url.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F]/g, '')
-  if (!sanitized) return ''
-  const encodedUrl = encodeURI(sanitized)
+  const encodedUrl = encodeURI(url)
   return encodedUrl
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-}
-
-/**
- * 如果配置的域名与当前访问域名不一致，优先使用当前请求域名，避免生成不被允许的 URL
- */
-function resolveSiteLink(configLink, req) {
-  const normalizedConfig = normalizeLink(configLink)
-  const host = req?.headers?.host
-  const protocol = req?.headers?.['x-forwarded-proto'] || 'https'
-  const runtimeLink = host ? `${protocol}://${host}` : ''
-  const normalizedRuntime = normalizeLink(runtimeLink)
-
-  if (!normalizedConfig) return normalizedRuntime
-  if (!normalizedRuntime) return normalizedConfig
-
-  try {
-    const configUrl = new URL(normalizedConfig)
-    const runtimeUrl = new URL(normalizedRuntime)
-    if (configUrl.host !== runtimeUrl.host) {
-      return normalizedRuntime
-    }
-  } catch {
-    // 如果 URL 无法解析，兜底返回配置的
-    return normalizedConfig || normalizedRuntime
-  }
-
-  return normalizedConfig
 }
 
 export const getServerSideProps = async (ctx) => {
