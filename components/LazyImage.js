@@ -28,16 +28,8 @@ export default function LazyImage({
     placeholderSrc || defaultPlaceholderSrc
   )
 
-  /**
-   * 占位图加载成功
-   */
-  const handleThumbnailLoaded = () => {
-    if (typeof onLoad === 'function') {
-      // onLoad() // 触发传递的onLoad回调函数
-    }
-  }
   // 原图加载完成
-  const handleImageLoaded = img => {
+  const handleImageLoaded = () => {
     if (typeof onLoad === 'function') {
       onLoad() // 触发传递的onLoad回调函数
     }
@@ -65,6 +57,12 @@ export default function LazyImage({
   }
 
   useEffect(() => {
+    // 如果没有提供原始图片地址，直接使用占位图并退出
+    if (!src) {
+      setCurrentSrc(placeholderSrc || defaultPlaceholderSrc)
+      return
+    }
+
     const adjustedImageSrc =
       adjustImgSize(src, maxWidth) || defaultPlaceholderSrc
 
@@ -74,7 +72,6 @@ export default function LazyImage({
       img.src = adjustedImageSrc
       img.onload = () => {
         setCurrentSrc(adjustedImageSrc)
-        handleImageLoaded(adjustedImageSrc)
       }
       img.onerror = handleImageError
       return
@@ -87,7 +84,6 @@ export default function LazyImage({
       img.src = adjustedImageSrc
       img.onload = () => {
         setCurrentSrc(adjustedImageSrc)
-        handleImageLoaded(adjustedImageSrc)
       }
       img.onerror = handleImageError
       return
@@ -106,7 +102,6 @@ export default function LazyImage({
             img.src = adjustedImageSrc
             img.onload = () => {
               setCurrentSrc(adjustedImageSrc)
-              handleImageLoaded(adjustedImageSrc)
             }
             img.onerror = handleImageError
 
@@ -129,15 +124,15 @@ export default function LazyImage({
         observer.unobserve(imageRef.current)
       }
     }
-  }, [src, maxWidth, priority])
+  }, [defaultPlaceholderSrc, maxWidth, placeholderSrc, priority, src])
 
   // 动态添加width、height和className属性，仅在它们为有效值时添加
   const imgProps = {
     ref: imageRef,
     src: currentSrc,
-    'data-src': src, // 存储原始图片地址
+    ...(src && { 'data-src': src }), // 存储原始图片地址
     alt: alt || 'Lazy loaded image',
-    onLoad: handleThumbnailLoaded,
+    onLoad: handleImageLoaded,
     onError: handleImageError,
     className: `${className || ''} lazy-image-placeholder`,
     style,
@@ -155,16 +150,12 @@ export default function LazyImage({
   if (id) imgProps.id = id
   if (title) imgProps.title = title
 
-  if (!src) {
-    return null
-  }
-
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img {...imgProps} />
       {/* 预加载 */}
-      {priority && (
+      {priority && src && (
         <Head>
           <link rel='preload' as='image' href={adjustImgSize(src, maxWidth)} />
         </Head>
