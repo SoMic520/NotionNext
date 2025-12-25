@@ -39,11 +39,12 @@ export const getServerSideProps = async (ctx) => {
     }
 
     // 获取站点的 URL 配置
-    const link = siteConfig(
+    const configLink = siteConfig(
       'LINK',
       siteData?.siteInfo?.link,
       siteData.NOTION_CONFIG
     )
+    const link = resolveSiteLink(configLink, ctx.req)
 
     // 生成本地化的站点地图
     const localeFields = generateLocalesSitemap(link, siteData.allPages, locale)
