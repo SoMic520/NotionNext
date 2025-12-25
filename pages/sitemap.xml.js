@@ -4,6 +4,60 @@ import { getGlobalData } from '@/lib/db/getSiteData'
 import { extractLangId, extractLangPrefix } from '@/lib/utils/pageId'
 import { getServerSideSitemap } from 'next-sitemap'
 
+/**
+ * 规范化域名链接，移除尾部斜杠
+ */
+function normalizeLink(link) {
+  if (!link) return ''
+  return link.endsWith('/') ? link.slice(0, -1) : link
+}
+
+/**
+ * 获取当前请求的完整域名
+ */
+function getRuntimeLink(req) {
+  const host = req?.headers?.host
+  const proto =
+    req?.headers?.['x-forwarded-proto'] ||
+    req?.headers?.['x-real-proto'] ||
+    'https'
+  return host ? `${proto}://${host}` : ''
+}
+
+/**
+ * 将 URL 编码并转义为可在 XML 中安全使用的字符串
+ * @param {string} url
+ * @returns {string}
+ */
+function formatSitemapUrl(url) {
+  if (!url) return ''
+  // 去除 XML 不允许的控制字符
+  const sanitized = url.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F]/g, '')
+  if (!sanitized) return ''
+  const encodedUrl = encodeURI(sanitized)
+  return encodedUrl
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * 如果配置的域名与当前访问域名不一致，优先使用当前请求域名，避免生成不被允许的 URL
+ */
+function resolveSiteLink(configLink, req) {
+  const normalizedConfig = normalizeLink(configLink)
+  const normalizedRuntime = normalizeLink(getRuntimeLink(req))
+
+  // 只要有当前请求域名，就优先使用它，避免谷歌提示“不允许的网址”
+  if (normalizedRuntime) {
+    return normalizedRuntime
+  }
+
+  return normalizedConfig
+}
+
 export const getServerSideProps = async (ctx) => {
   let fields = [] // 用于存储所有 URL 数据
   const siteIds = BLOG.NOTION_PAGE_ID.split(',') // 处理多个站点ID
@@ -23,21 +77,39 @@ export const getServerSideProps = async (ctx) => {
     }
 
     // 获取站点的 URL 配置
-    const link = siteConfig(
+    const configLink = siteConfig(
       'LINK',
       siteData?.siteInfo?.link,
       siteData.NOTION_CONFIG
     )
+    const link = resolveSiteLink(configLink, ctx.req)
 
     // 生成本地化的站点地图
     const localeFields = generateLocalesSitemap(link, siteData.allPages, locale)
     fields = fields.concat(localeFields) // 合并到最终的字段
   }
 
+  // 如果没有任何可用链接，则兜底返回当前域名的根路径，避免 500
+  if (!fields.length) {
+    const fallback = normalizeLink(getRuntimeLink(ctx.req))
+    if (fallback) {
+      const today = new Date().toISOString().split('T')[0]
+      fields = [
+        {
+          loc: formatSitemapUrl(fallback),
+          lastmod: today,
+          changefreq: 'daily',
+          priority: '0.7'
+        }
+      ]
+    }
+  }
+
   // 确保 URL 唯一性
   fields = getUniqueFields(fields)
 
-  // 设置缓存控制（1小时有效，59秒过期）
+  // 设置响应头，确保以 XML 返回且可缓存（1小时有效，59秒过期）
+  ctx.res.setHeader('Content-Type', 'text/xml; charset=utf-8')
   ctx.res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=59')
 
   // 返回站点地图数据
@@ -60,37 +132,37 @@ function generateLocalesSitemap(link, allPages, locale) {
   // 默认页面 URL 配置
   const defaultFields = [
     {
-      loc: `${link}${locale}`,
+      loc: formatSitemapUrl(`${link}${locale}`),
       lastmod: dateNow,
       changefreq: 'daily',
       priority: '0.7'
     },
     {
-      loc: `${link}${locale}/archive`,
+      loc: formatSitemapUrl(`${link}${locale}/archive`),
       lastmod: dateNow,
       changefreq: 'daily',
       priority: '0.7'
     },
     {
-      loc: `${link}${locale}/category`,
+      loc: formatSitemapUrl(`${link}${locale}/category`),
       lastmod: dateNow,
       changefreq: 'daily',
       priority: '0.7'
     },
     {
-      loc: `${link}${locale}/rss/feed.xml`,
+      loc: formatSitemapUrl(`${link}${locale}/rss/feed.xml`),
       lastmod: dateNow,
       changefreq: 'daily',
       priority: '0.7'
     },
     {
-      loc: `${link}${locale}/search`,
+      loc: formatSitemapUrl(`${link}${locale}/search`),
       lastmod: dateNow,
       changefreq: 'daily',
       priority: '0.7'
     },
     {
-      loc: `${link}${locale}/tag`,
+      loc: formatSitemapUrl(`${link}${locale}/tag`),
       lastmod: dateNow,
       changefreq: 'daily',
       priority: '0.7'
@@ -107,7 +179,7 @@ function generateLocalesSitemap(link, allPages, locale) {
           : post.slug
         const lastmod = post?.publishDay ? new Date(post?.publishDay).toISOString().split('T')[0] : dateNow
         return {
-          loc: `${link}${locale}/${slugWithoutLeadingSlash}`,
+          loc: formatSitemapUrl(`${link}${locale}/${slugWithoutLeadingSlash}`),
           lastmod,
           changefreq: 'daily',
           priority: '0.7'
