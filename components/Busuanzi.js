@@ -9,12 +9,23 @@ let path = ''
 export default function Busuanzi () {
   const { theme } = useGlobal()
   const router = useRouter()
-  router.events.on('routeChangeComplete', (url, option) => {
-    if (url !== path) {
-      path = url
-      busuanzi.fetch()
+
+  useEffect(() => {
+    const handleRouteChange = url => {
+      if (url !== path) {
+        path = url
+        busuanzi.fetch()
+      }
     }
-  })
+
+    router.events.on('routeChangeComplete', handleRouteChange)
+    // 初始化时主动刷新，避免首屏不更新
+    busuanzi.fetch()
+
+    return () => {
+      router.events.off('routeChangeComplete', handleRouteChange)
+    }
+  }, [router])
 
   // 更换主题时更新
   useEffect(() => {
