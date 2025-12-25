@@ -327,7 +327,7 @@ function LinkCard({ it }) {
 }
 
 /* ---------- 列表主体 ---------- */
-function LinksBody({ data = [], categories = [] }) {
+function LinksBody({ data = [], categories = [], slugWarning = false }) {
   const groups = (categories || []).map(cat => ({
     cat,
     items: (data || [])
@@ -340,6 +340,11 @@ function LinksBody({ data = [], categories = [] }) {
       <header className="hd">
         <h1>友情链接</h1>
         <p>悬停卡片显示网页预览，点击新标签打开。</p>
+        {slugWarning && (
+          <div className="slug-warning">
+            已检测到 Notion 中的 Links 页面，但内容获取失败，已回退为静态列表。
+          </div>
+        )}
       </header>
 
       {(!data || data.length === 0) ? (
@@ -381,6 +386,12 @@ function LinksBody({ data = [], categories = [] }) {
         .wrap{ max-width:1100px; margin:0 auto; padding:30px 16px 60px; }
         .hd h1{ margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--txt) }
         .hd p{ margin:10px 0 0; font-size:14px; color:var(--muted) }
+        .slug-warning{
+          margin-top:10px; padding:10px 12px;
+          border-radius:10px; border:1px solid var(--box);
+          background: rgba(122,162,255,.08);
+          color: var(--sub); font-size:13px;
+        }
 
         .empty{
           margin-top:16px; padding:20px;
@@ -415,14 +426,28 @@ function LinksBody({ data = [], categories = [] }) {
 export default function Links(props) {
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
   const pageTitle = `${siteTitle} | Links`
+  const hasPost = !!(props?.post && props.post.blockMap)
+  const hasSlugPath = !!props?.__hasSlugPath
 
   useEffect(() => {
-    if (!props.__hasSlug || typeof document === 'undefined') return
+    if (!hasPost || typeof document === 'undefined') return
     document.documentElement.classList.add('__links_hide_notion')
     return () => document.documentElement.classList.remove('__links_hide_notion')
-  }, [props.__hasSlug])
+  }, [hasPost])
 
-  const body = <LinksBody data={props.items} categories={props.categories} />
+  useEffect(() => {
+    if (hasSlugPath && !hasPost) {
+      console.warn('[Links] Notion slug page detected but post data is missing; rendering fallback body.')
+    }
+  }, [hasSlugPath, hasPost])
+
+  const body = (
+    <LinksBody
+      data={props.items}
+      categories={props.categories}
+      slugWarning={hasSlugPath && !hasPost}
+    />
+  )
 
   return (
     <>
@@ -432,7 +457,7 @@ export default function Links(props) {
         <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
       </Head>
-      {props.__hasSlug
+      {hasPost
         ? (
           <DynamicLayout
             theme={siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)}
@@ -452,7 +477,7 @@ export async function getStaticProps({ locale }) {
   let base = {}
   let items = []
   let categories = []
-  let hasSlug = false
+  let hasSlugPath = false
   let slugPost = null
 
   try {
@@ -467,8 +492,8 @@ export async function getStaticProps({ locale }) {
       : null
 
     if (slugPage) {
+      hasSlugPath = true
       slugPost = await getPost(slugPage.id)
-      hasSlug = !!slugPost
     }
   } catch (e) {
     base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
@@ -483,5 +508,5 @@ export async function getStaticProps({ locale }) {
     categories = []
   }
 
-  return { props: { ...base, items, categories, __hasSlug: hasSlug, post: slugPost }, revalidate: 600 }
+  return { props: { ...base, items, categories, __hasSlugPath: hasSlugPath, post: slugPost }, revalidate: 600 }
 }
