@@ -11,10 +11,7 @@ import { getServerSideSitemap } from 'next-sitemap'
  */
 function formatSitemapUrl(url) {
   if (!url) return ''
-  // 去除 XML 不允许的控制字符
-  const sanitized = url.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F]/g, '')
-  if (!sanitized) return ''
-  const encodedUrl = encodeURI(sanitized)
+  const encodedUrl = encodeURI(url)
   return encodedUrl
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
