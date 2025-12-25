@@ -53,7 +53,8 @@ export const getServerSideProps = async (ctx) => {
   // 确保 URL 唯一性
   fields = getUniqueFields(fields)
 
-  // 设置缓存控制（1小时有效，59秒过期）
+  // 设置响应头，确保以 XML 返回且可缓存（1小时有效，59秒过期）
+  ctx.res.setHeader('Content-Type', 'text/xml; charset=utf-8')
   ctx.res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=59')
 
   // 返回站点地图数据
