@@ -1,20 +1,26 @@
 import busuanzi from '@/lib/plugins/busuanzi'
 import { useRouter } from 'next/router'
 import { useGlobal } from '@/lib/global'
-// import { useRouter } from 'next/router'
-import { useEffect } from 'react'
-
-let path = ''
+import { useEffect, useCallback } from 'react'
 
 export default function Busuanzi () {
   const { theme } = useGlobal()
   const router = useRouter()
-  router.events.on('routeChangeComplete', (url, option) => {
-    if (url !== path) {
-      path = url
-      busuanzi.fetch()
+
+  // 使用 useEffect 注册路由事件，避免每次渲染都重复注册
+  useEffect(() => {
+    let lastPath = ''
+    const handleRouteChange = (url) => {
+      if (url !== lastPath) {
+        lastPath = url
+        busuanzi.fetch()
+      }
     }
-  })
+    router.events.on('routeChangeComplete', handleRouteChange)
+    return () => {
+      router.events.off('routeChangeComplete', handleRouteChange)
+    }
+  }, [router.events])
 
   // 更换主题时更新
   useEffect(() => {
@@ -22,5 +28,6 @@ export default function Busuanzi () {
       busuanzi.fetch()
     }
   }, [theme])
+
   return null
 }
