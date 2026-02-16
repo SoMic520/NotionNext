@@ -50,35 +50,36 @@ const NotionPage = ({ post, className }) => {
 
     /**
      * 放大查看图片时替换成高清图像
+     * 仅监视 #notion-article 内部元素，缩小 DOM 监听范围提升性能
      */
-    const observer = new MutationObserver((mutationsList, observer) => {
-      mutationsList.forEach(mutation => {
+    const articleEl = document.getElementById('notion-article')
+    const observer = new MutationObserver((mutationsList) => {
+      for (const mutation of mutationsList) {
         if (
           mutation.type === 'attributes' &&
-          mutation.attributeName === 'class'
+          mutation.attributeName === 'class' &&
+          mutation.target.classList.contains('medium-zoom-image--opened')
         ) {
-          if (mutation.target.classList.contains('medium-zoom-image--opened')) {
-            // 等待动画完成后替换为更高清的图像
-            setTimeout(() => {
-              // 获取该元素的 src 属性
-              const src = mutation?.target?.getAttribute('src')
-              //   替换为更高清的图像
-              mutation?.target?.setAttribute(
+          setTimeout(() => {
+            const src = mutation.target.getAttribute('src')
+            if (src) {
+              mutation.target.setAttribute(
                 'src',
                 compressImage(src, IMAGE_ZOOM_IN_WIDTH)
               )
-            }, 800)
-          }
+            }
+          }, 800)
         }
-      })
+      }
     })
 
-    // 监视页面元素和属性变化
-    observer.observe(document.body, {
-      attributes: true,
-      subtree: true,
-      attributeFilter: ['class']
-    })
+    if (articleEl) {
+      observer.observe(articleEl, {
+        attributes: true,
+        subtree: true,
+        attributeFilter: ['class']
+      })
+    }
 
     return () => {
       observer.disconnect()

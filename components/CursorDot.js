@@ -1,11 +1,14 @@
 import { useRouter } from 'next/router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+
 /**
  * 白点鼠标跟随
- * @returns 
+ * 使用事件委托代替逐元素绑定，大幅减少事件监听器数量
  */
 const CursorDot = () => {
     const router = useRouter();
+    const animFrameRef = useRef(null);
+
     useEffect(() => {
         // 创建小白点元素
         const dot = document.createElement('div');
@@ -13,7 +16,7 @@ const CursorDot = () => {
         document.body.appendChild(dot);
 
         // 鼠标坐标和缓动目标坐标
-        let mouse = { x: -100, y: -100 }; // 初始位置在屏幕外
+        let mouse = { x: -100, y: -100 };
         let dotPos = { x: mouse.x, y: mouse.y };
 
         // 监听鼠标移动
@@ -21,55 +24,54 @@ const CursorDot = () => {
             mouse.x = e.clientX;
             mouse.y = e.clientY;
         };
-        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mousemove', handleMouseMove, { passive: true });
 
-        // 监听鼠标悬停在可点击对象上的事件
-        const handleMouseEnter = () => {
-            dot.classList.add('cursor-dot-hover'); // 添加放大样式
+        // 使用事件委托：仅在 document 上监听，判断 target 是否为可点击元素
+        const isClickable = (el) => {
+            if (!el || el === document.body || el === document.documentElement) return false;
+            const tag = el.tagName;
+            if (tag === 'A' || tag === 'BUTTON') return true;
+            if (el.getAttribute('role') === 'button') return true;
+            if (el.hasAttribute('onclick')) return true;
+            const style = window.getComputedStyle(el);
+            if (style.cursor === 'pointer') return true;
+            return false;
         };
-        const handleMouseLeave = () => {
-            dot.classList.remove('cursor-dot-hover'); // 移除放大样式
+
+        const handleMouseOver = (e) => {
+            let target = e.target;
+            while (target && target !== document.body) {
+                if (isClickable(target)) {
+                    dot.classList.add('cursor-dot-hover');
+                    return;
+                }
+                target = target.parentElement;
+            }
+            dot.classList.remove('cursor-dot-hover');
         };
 
+        document.addEventListener('mouseover', handleMouseOver, { passive: true });
 
-        // 为所有可点击元素和包含 hover 或 group-hover 类名的元素添加事件监听
-        setTimeout(() => {
-            const clickableElements = document.querySelectorAll(
-                'a, button, [role="button"], [onclick], [cursor="pointer"], [class*="hover"], [class*="group-hover"], [class*="cursor-pointer"]'
-            );
-            clickableElements.forEach((el) => {
-                el.addEventListener('mouseenter', handleMouseEnter);
-                el.addEventListener('mouseleave', handleMouseLeave);
-            });
-        }, 200); // 延时 200ms 执行
-
-        // 动画循环：延迟更新小白点位置
+        // 动画循环
+        const damping = 0.2;
         const updateDotPosition = () => {
-            const damping = 0.2; // 阻尼系数，值越小延迟越明显
             dotPos.x += (mouse.x - dotPos.x) * damping;
             dotPos.y += (mouse.y - dotPos.y) * damping;
-
-            // 更新DOM
             dot.style.left = `${dotPos.x}px`;
             dot.style.top = `${dotPos.y}px`;
-
-            requestAnimationFrame(updateDotPosition);
+            animFrameRef.current = requestAnimationFrame(updateDotPosition);
         };
+        animFrameRef.current = requestAnimationFrame(updateDotPosition);
 
-        // 启动动画
-        updateDotPosition();
-
-        // 清理函数
         return () => {
             document.removeEventListener('mousemove', handleMouseMove);
-            const clickableElements = document.querySelectorAll(
-                'a, button, [role="button"], [onclick], [cursor="pointer"], [class*="hover"], [class*="group-hover"], [class*="cursor-pointer"]'
-            );
-            clickableElements.forEach((el) => {
-                el.removeEventListener('mouseenter', handleMouseEnter);
-                el.removeEventListener('mouseleave', handleMouseLeave);
-            });
-            document.body.removeChild(dot);
+            document.removeEventListener('mouseover', handleMouseOver);
+            if (animFrameRef.current) {
+                cancelAnimationFrame(animFrameRef.current);
+            }
+            if (dot.parentNode) {
+                dot.parentNode.removeChild(dot);
+            }
         };
     }, [router]);
 
@@ -84,21 +86,22 @@ const CursorDot = () => {
                 pointer-events: none;
                 transform: translate(-50%, -50%);
                 z-index: 9999;
-                transition: transform 100ms ease-out, width 200ms ease, height 200ms ease; /* 添加尺寸平滑过渡 */
-                mix-blend-mode: difference; /* 可选：增强对比度 */
+                transition: width 200ms ease, height 200ms ease;
+                mix-blend-mode: difference;
+                will-change: left, top, width, height;
             }
 
             .cursor-dot-hover {
-                border: 1px solid rgba(167, 167, 167, 0.14); /* 鼠标悬停时的深灰色边框，厚度为1px */
-                width: 60px; /* 放大 */
-                height: 60px; /* 放大 */
-                background: hsla(0, 0%, 100%, 0.04); /* 半透明背景 */
-                -webkit-backdrop-filter: blur(5px); /* 毛玻璃效果 */
+                border: 1px solid rgba(167, 167, 167, 0.14);
+                width: 60px;
+                height: 60px;
+                background: hsla(0, 0%, 100%, 0.04);
+                -webkit-backdrop-filter: blur(5px);
                 backdrop-filter: blur(5px);
             }
 
             .dark .cursor-dot-hover {
-                border: 1px solid rgba(66, 66, 66, 0.66); /* 鼠标悬停时的深灰色边框，厚度为1px */
+                border: 1px solid rgba(66, 66, 66, 0.66);
             }
         `}</style>
     );

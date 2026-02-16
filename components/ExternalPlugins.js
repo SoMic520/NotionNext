@@ -14,6 +14,23 @@ import { useGlobal } from '@/lib/global'
 import IconFont from './IconFont'
 
 /**
+ * 转义字符串中的特殊字符，防止在内联脚本中被注入
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeInlineScript(str) {
+  if (!str || typeof str !== 'string') return ''
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+}
+
+/**
  * 各种插件脚本
  * @param {*} props
  * @returns
@@ -132,9 +149,12 @@ const ExternalPlugin = props => {
   const UMAMI_HOST = siteConfig('UMAMI_HOST', null, NOTION_CONFIG)
   const UMAMI_ID = siteConfig('UMAMI_ID', null, NOTION_CONFIG)
 
-  // 自定义样式css和js引入
-  if (isBrowser) {
-    // 初始化AOS动画
+  const router = useRouter()
+
+  // 将外部资源加载移入 useEffect，避免在渲染期间产生副作用
+  useEffect(() => {
+    if (!isBrowser) return
+
     // 静态导入本地自定义样式
     loadExternalResource('/css/custom.css', 'css')
     loadExternalResource('/js/custom.js', 'js')
@@ -161,31 +181,40 @@ const ExternalPlugin = props => {
         loadExternalResource(url, 'css')
       }
     }
-  }
+  }, [IMG_SHADOW, ANIMATE_CSS_URL, CUSTOM_EXTERNAL_JS, CUSTOM_EXTERNAL_CSS])
 
-  const router = useRouter()
   useEffect(() => {
     // 异步渲染谷歌广告
+    let adsenseTimer
     if (ADSENSE_GOOGLE_ID) {
-      setTimeout(() => {
+      adsenseTimer = setTimeout(() => {
         initGoogleAdsense(ADSENSE_GOOGLE_ID)
       }, 3000)
     }
 
-    setTimeout(() => {
+    const urlTimer = setTimeout(() => {
       // 映射url
       convertInnerUrl({ allPages: props?.allNavPages, lang: lang })
     }, 500)
+
+    return () => {
+      clearTimeout(adsenseTimer)
+      clearTimeout(urlTimer)
+    }
   }, [router])
 
   useEffect(() => {
-    // 执行注入脚本
-    // eslint-disable-next-line no-eval
+    // 执行注入脚本 - 使用 Function 构造器替代 eval，限制作用域
     if (GLOBAL_JS && GLOBAL_JS.trim() !== '') {
-      // console.log('Inject JS:', GLOBAL_JS);
+      try {
+        // 使用 Function 构造器比 eval 更安全，不会访问局部作用域
+        const fn = new Function(GLOBAL_JS)
+        fn()
+      } catch (e) {
+        console.warn('[ExternalPlugins] GLOBAL_JS 执行出错:', e)
+      }
     }
-    eval(GLOBAL_JS)
-  })
+  }, [GLOBAL_JS])
 
   if (DISABLE_PLUGIN) {
     return null
@@ -247,7 +276,7 @@ const ExternalPlugin = props => {
             dangerouslySetInnerHTML={{
               __html: `
                     window.chatbaseConfig = {
-                        chatbotId: "${CHATBASE_ID}",
+                        chatbotId: "${escapeInlineScript(CHATBASE_ID)}",
                         }
                     `
             }}
@@ -274,7 +303,7 @@ const ExternalPlugin = props => {
                   } else {
                     l.head.appendChild(t);
                   }
-                })(window, document, "clarity", "script", "${CLARITY_ID}");
+                })(window, document, "clarity", "script", "${escapeInlineScript(CLARITY_ID)}");
                 `
             }}
           />
@@ -313,7 +342,7 @@ const ExternalPlugin = props => {
             dangerouslySetInnerHTML={{
               __html: `
              daovoice('init', {
-                app_id: "${COMMENT_DAO_VOICE_ID}"
+                app_id: "${escapeInlineScript(COMMENT_DAO_VOICE_ID)}"
               });
               daovoice('update');
               `
@@ -363,7 +392,7 @@ const ExternalPlugin = props => {
             dangerouslySetInnerHTML={{
               __html: `
             ((window.gitter = {}).chat = {}).options = {
-              room: '${COMMENT_GITTER_ROOM}'
+              room: '${escapeInlineScript(COMMENT_GITTER_ROOM)}'
             };
             `
             }}
@@ -380,7 +409,7 @@ const ExternalPlugin = props => {
           var _hmt = _hmt || [];
           (function() {
             var hm = document.createElement("script");
-            hm.src = "https://hm.baidu.com/hm.js?${ANALYTICS_BAIDU_ID}";
+            hm.src = "https://hm.baidu.com/hm.js?${escapeInlineScript(ANALYTICS_BAIDU_ID)}";
             var s = document.getElementsByTagName("script")[0]; 
             s.parentNode.insertBefore(hm, s);
           })();
@@ -395,7 +424,7 @@ const ExternalPlugin = props => {
           async
           dangerouslySetInnerHTML={{
             __html: `
-          document.write(unescape("%3Cspan style='display:none' id='cnzz_stat_icon_${ANALYTICS_CNZZ_ID}'%3E%3C/span%3E%3Cscript src='https://s9.cnzz.com/z_stat.php%3Fid%3D${ANALYTICS_CNZZ_ID}' type='text/javascript'%3E%3C/script%3E"));
+          document.write(unescape("%3Cspan style='display:none' id='cnzz_stat_icon_${escapeInlineScript(ANALYTICS_CNZZ_ID)}'%3E%3C/span%3E%3Cscript src='https://s9.cnzz.com/z_stat.php%3Fid%3D${escapeInlineScript(ANALYTICS_CNZZ_ID)}' type='text/javascript'%3E%3C/script%3E"));
           `
           }}
         />
@@ -420,7 +449,7 @@ const ExternalPlugin = props => {
                 window.dataLayer = window.dataLayer || [];
                 function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
-                gtag('config', '${ANALYTICS_GOOGLE_ID}', {
+                gtag('config', '${escapeInlineScript(ANALYTICS_GOOGLE_ID)}', {
                   page_path: window.location.pathname,
                 });
               `
@@ -439,9 +468,9 @@ const ExternalPlugin = props => {
               _paq.push(['trackPageView']);
               _paq.push(['enableLinkTracking']);
               (function() {
-                var u="//${MATOMO_HOST_URL}/";
+                var u="//${escapeInlineScript(MATOMO_HOST_URL)}/";
                 _paq.push(['setTrackerUrl', u+'matomo.php']);
-                _paq.push(['setSiteId', '${MATOMO_SITE_ID}']);
+                _paq.push(['setSiteId', '${escapeInlineScript(MATOMO_SITE_ID)}']);
                 var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
                 g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
               })();
