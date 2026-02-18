@@ -3,7 +3,6 @@ import Head from 'next/head'
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
 import { fetchGlobalAllData } from '@/lib/db/SiteDataApi'
-import { DynamicLayout } from '@/themes/theme'
 import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -406,10 +405,6 @@ function LinksBody({ data = [], categories = [] }) {
           border:1px solid var(--box); border-radius:var(--radius);
           padding:12px 14px; color:var(--muted); font-size:14px
         }
-
-        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
-        :global(html.__links_hide_notion article .notion),
-        :global(html.__links_hide_notion article .notion-page){ display:none !important; }
       `}</style>
     </div>
   )
@@ -417,18 +412,8 @@ function LinksBody({ data = [], categories = [] }) {
 
 /* ---------- 页面导出：标题 & 全局预连接 ---------- */
 export default function Links(props) {
-  const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
   const pageTitle = `${siteTitle} | Links`
-
-  useEffect(() => {
-    if (props.__hasSlug && typeof document !== 'undefined') {
-      document.documentElement.classList.add('__links_hide_notion')
-      return () => document.documentElement.classList.remove('__links_hide_notion')
-    }
-  }, [props.__hasSlug])
-
-  const body = <LinksBody data={props.items} categories={props.categories} />
 
   return (
     <>
@@ -439,28 +424,19 @@ export default function Links(props) {
         <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
       </Head>
-      {props.__hasSlug
-        ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
-        : body}
+      <LinksBody data={props.items} categories={props.categories} />
     </>
   )
 }
 
-/* ---------- ISR & 占位页探测 ---------- */
+/* ---------- ISR ---------- */
 export async function getStaticProps({ locale }) {
   let base = {}
   let items = []
   let categories = []
-  let hasSlug = false
 
   try {
     base = await fetchGlobalAllData({ from: 'links', locale })
-    const pages = base?.allPages || base?.pages || []
-    hasSlug = Array.isArray(pages) && pages.some(p =>
-      (p?.slug === 'links' || p?.slug?.value === 'links') &&
-      (p?.type === 'Page' || p?.type?.value === 'Page') &&
-      (p?.status === 'Published' || p?.status?.value === 'Published' || p?.status === '公开' || p?.status === '已发布')
-    )
   } catch (e) {
     base = { NOTION_CONFIG: base?.NOTION_CONFIG || {} }
   }
@@ -474,5 +450,5 @@ export async function getStaticProps({ locale }) {
     categories = []
   }
 
-  return { props: { ...base, items, categories, __hasSlug: hasSlug }, revalidate: 600 }
+  return { props: { ...base, items, categories }, revalidate: 600 }
 }
