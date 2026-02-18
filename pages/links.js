@@ -2,9 +2,9 @@
 import Head from 'next/head'
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
-import { fetchGlobalAllData } from '@/lib/db/SiteDataApi'
+import { getGlobalData } from '@/lib/db/getSiteData'
 import { DynamicLayout } from '@/themes/theme'
-import { getLinksAndCategories } from '@/lib/links'
+import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -18,7 +18,7 @@ function normalizeUrl(u) {
 }
 function safeHost(u) { try { return new URL(normalizeUrl(u)).hostname.toLowerCase() } catch { return '' } }
 
-/* ---------- 字母头像（兜底） ---------- */
+/* ---------- 字母头像（最终兜底，不再回落到本站 /favicon.ico） ---------- */
 function hashColor(text = '') {
   let h = 0
   for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
@@ -38,36 +38,60 @@ function letterAvatarDataURI(label = 'L', bg = '#888') {
   return `data:image/svg+xml;charset=utf-8,${svg}`
 }
 
-/* ---------- 快速图标：Google S2 CDN 直出，onError 链式降级 ----------
-   优先级：Google S2（CDN 缓存，毫秒级）→ DuckDuckGo → 直接 favicon.ico → 字母头像
-   不使用并发竞速，避免创建多余 Image 对象，减少网络请求浪费。
-   Google S2 作为 img src 初始值，浏览器直接渲染，无需等待任何 useEffect。
-   ------------------------------------------------------------------ */
+/* ---------- 更快的站点图标：并发竞速（root/apple-touch/S2/DDG），谁先加载用谁 ---------- */
 function FastIcon({ url, name }) {
   const host = safeHost(url)
   const letter = letterAvatarDataURI(host?.[0] || name?.[0] || 'L', hashColor(host || name))
+  const [src, setSrc] = useState(letter)
 
-  const sources = host
-    ? [
-        `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
-        `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./, '')}.ico`,
-        `https://${host}/favicon.ico`,
-        letter
-      ]
-    : [letter]
+  useEffect(() => {
+    if (!host) { setSrc(letter); return }
+    // 为该域名预先建链（提升首包）
+    if (typeof document !== 'undefined') {
+      const dns = document.createElement('link'); dns.rel = 'dns-prefetch'; dns.href = '//' + host
+      const pre = document.createElement('link'); pre.rel = 'preconnect'; pre.href = 'https://' + host; pre.crossOrigin = ''
+      document.head.appendChild(dns); document.head.appendChild(pre)
+      return () => { try { document.head.removeChild(dns); document.head.removeChild(pre) } catch {} }
+    }
+  }, [host])
 
-  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    if (!host) return
+    let settled = false
+    const imgs = []
+    const done = (u) => { if (!settled) { settled = true; setSrc(u) } }
+    const candidates = [
+      `https://${host}/favicon.ico`,
+      `https://${host}/apple-touch-icon.png`,
+      `https://${host}/favicon.png`,
+      `https://${host}/favicon.svg`,
+      `https://www.google.com/s2/favicons?sz=64&domain=${host}`,
+      `https://icons.duckduckgo.com/ip3/${host.replace(/^www\./,'')}.ico`
+    ]
+    // 总兜底超时（避免一直等）
+    const globalTimer = setTimeout(() => { if (!settled) done(letter) }, 2200)
+
+    for (const u of candidates) {
+      const im = new Image()
+      im.decoding = 'async'
+      im.referrerPolicy = 'no-referrer'
+      im.onload = () => done(u)
+      im.onerror = () => {}
+      im.src = u
+      imgs.push(im)
+    }
+    return () => { clearTimeout(globalTimer); imgs.forEach(i => { i.onload = null; i.onerror = null }) }
+  }, [host])
 
   return (
     <img
-      src={sources[Math.min(idx, sources.length - 1)]}
+      src={src}
       alt={name}
       title={host || name}
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      onError={() => setIdx(i => i + 1)}
-      style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+      style={{ width:'100%', height:'100%', display:'block', objectFit:'cover' }}
     />
   )
 }
@@ -104,6 +128,7 @@ function computePreviewPlacement(clientX, clientY) {
   ]
   const best = candidates.sort((a, b) => (b.w * b.h) - (a.w * a.h))[0]
 
+  // 舒适上限：不过大
   const capW = Math.min(Math.max(Math.floor(vw * 0.35), 360), 520)
   const capH = Math.min(Math.max(Math.floor(vh * 0.40), 240), 420)
   const w = Math.max(320, Math.min(best.w - m, capW))
@@ -119,7 +144,7 @@ function computePreviewPlacement(clientX, clientY) {
   } else if (best.side === 'bottom') {
     left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
     top  = Math.min(clientY + m, vh - h - m)
-  } else {
+  } else { // top
     left = Math.min(Math.max(clientX - w / 2, m), vw - w - m)
     top  = Math.max(clientY - h - m, m)
   }
@@ -138,6 +163,7 @@ function LinkCard({ it }) {
   const url = normalizeUrl(it.URL)
   const host = safeHost(it.URL)
 
+  // 预览失败截图兜底（按预览窗口大小）
   const shot = url ? `https://s.wordpress.com/mshots/v1/${encodeURIComponent(url)}?w=${Math.round(pv.w)}&h=${Math.round(pv.h)}` : ''
 
   const openPreview = (e) => {
@@ -146,6 +172,7 @@ function LinkCard({ it }) {
     setPv(prev => ({ ...computePreviewPlacement(clientX, clientY), visible: true }))
     setLoaded(false); setFailed(false)
     clearTimeout(failTimerRef.current)
+    // 1.9s 内未 onLoad → 认为受限，切换截图
     failTimerRef.current = setTimeout(() => {
       setFailed(prev => prev || !loaded)
     }, 1900)
@@ -186,6 +213,7 @@ function LinkCard({ it }) {
           {host && <div className="host">{host.replace(/^www\./, '')}</div>}
         </div>
 
+        {/* 通过 Portal 渲染的预览窗：绝不被裁剪/遮挡 */}
         {url && (
           <PreviewPortal>
             <div
@@ -213,6 +241,7 @@ function LinkCard({ it }) {
         <style jsx>{`
           li { display:block; height:100% }
 
+          /* —— 卡片层次感：标题/副文/附属 —— */
           .card{
             position:relative; display:flex; gap:14px; align-items:flex-start;
             height:100%; min-height:100px;
@@ -251,6 +280,7 @@ function LinkCard({ it }) {
             white-space:nowrap; overflow:hidden; text-overflow:ellipsis
           }
 
+          /* 预览窗（Portal 到 body） */
           .preview{
             position: fixed;
             z-index: 2147483000;
@@ -365,6 +395,7 @@ function LinksBody({ data = [], categories = [] }) {
         }
         .group-count{ font-size:12px; color:var(--muted) }
 
+        /* 同排宽度一致 */
         .cards{
           list-style:none; padding:0; margin:0;
           display:grid; gap:14px;
@@ -376,6 +407,7 @@ function LinksBody({ data = [], categories = [] }) {
           padding:12px 14px; color:var(--muted); font-size:14px
         }
 
+        /* 隐藏 /links 的 Notion 原文（主题外壳时） */
         :global(html.__links_hide_notion article .notion),
         :global(html.__links_hide_notion article .notion-page){ display:none !important; }
       `}</style>
@@ -383,7 +415,7 @@ function LinksBody({ data = [], categories = [] }) {
   )
 }
 
-/* ---------- 页面导出 ---------- */
+/* ---------- 页面导出：标题 & 全局预连接 ---------- */
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
@@ -402,7 +434,7 @@ export default function Links(props) {
     <>
       <Head>
         <title>{pageTitle}</title>
-        {/* 提前建链，加速 favicon CDN */}
+        {/* 提前建链，加速第三方静态源 */}
         <link rel="preconnect" href="https://www.google.com" crossOrigin="" />
         <link rel="preconnect" href="https://icons.duckduckgo.com" crossOrigin="" />
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
@@ -414,7 +446,7 @@ export default function Links(props) {
   )
 }
 
-/* ---------- ISR ---------- */
+/* ---------- ISR & 占位页探测 ---------- */
 export async function getStaticProps({ locale }) {
   let base = {}
   let items = []
@@ -422,7 +454,7 @@ export async function getStaticProps({ locale }) {
   let hasSlug = false
 
   try {
-    base = await fetchGlobalAllData({ from: 'links', locale })
+    base = await getGlobalData({ from: 'links', locale })
     const pages = base?.allPages || base?.pages || []
     hasSlug = Array.isArray(pages) && pages.some(p =>
       (p?.slug === 'links' || p?.slug?.value === 'links') &&
