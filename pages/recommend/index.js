@@ -1,7 +1,7 @@
 // pages/recommend/index.js
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
-import { getGlobalData } from '@/lib/db/getSiteData'
+import { fetchGlobalAllData } from '@/lib/db/SiteDataApi'
 import { DynamicLayout } from '@/themes/theme'
 import Head from 'next/head' // 引入 Head 组件
 import { useEffect } from 'react'
@@ -42,7 +42,7 @@ export default function LayoutRecommend(props) {
 }
 
 export async function getStaticProps({ locale }) {
-  const props = await getGlobalData({ from: 'Recommend', locale })
+  const props = await fetchGlobalAllData({ from: 'Recommend', locale })
 
   // ✅ 兜底：如果 posts 为空，就从 allPages 抽出已发布的博文
   if ((!props.posts || props.posts.length === 0) && Array.isArray(props.allPages)) {
