@@ -2,7 +2,7 @@
 import Head from 'next/head'
 import BLOG from '@/blog.config'
 import { siteConfig } from '@/lib/config'
-import { getGlobalData } from '@/lib/db/getSiteData'
+import { fetchGlobalAllData } from '@/lib/db/SiteDataApi'
 import { DynamicLayout } from '@/themes/theme'
 import getLinksAndCategories from '@/lib/links'
 import { useRef, useState, useEffect } from 'react'
@@ -422,7 +422,7 @@ export async function getStaticProps({ locale }) {
   let hasSlug = false
 
   try {
-    base = await getGlobalData({ from: 'links', locale })
+    base = await fetchGlobalAllData({ from: 'links', locale })
     const pages = base?.allPages || base?.pages || []
     hasSlug = Array.isArray(pages) && pages.some(p =>
       (p?.slug === 'links' || p?.slug?.value === 'links') &&
