@@ -440,7 +440,7 @@ export default function Links(props) {
         <link rel="preconnect" href="https://s.wordpress.com" crossOrigin="" />
       </Head>
       {props.__hasSlug
-        ? <DynamicLayout theme={theme} layoutName="LayoutSlug" {...props}>{body}</DynamicLayout>
+        ? <DynamicLayout theme={theme} layoutName="LayoutBase" {...props}>{body}</DynamicLayout>
         : body}
     </>
   )
