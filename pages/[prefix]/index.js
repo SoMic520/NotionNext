@@ -119,28 +119,30 @@ Slug.propTypes = {
   NOTION_CONFIG: PropTypes.object
 }
 
+const getSingleSegmentPaths = pages =>
+  (Array.isArray(pages) ? pages : [])
+    .filter(row => checkSlugHasNoSlash(row))
+    .map(row => ({ params: { prefix: String(row.slug).replace(/^\//, '') } }))
+
 export async function getStaticPaths() {
   const from = 'slug-paths'
   const { allPages } = await fetchGlobalAllData({ from })
+  const safePages = Array.isArray(allPages) ? allPages : []
 
   // Export 模式：全量预生成
   if (isExport()) {
-    await prefetchAllBlockMaps(allPages)
+    await prefetchAllBlockMaps(safePages)
     return {
-      paths: allPages
-        ?.filter(row => checkSlugHasNoSlash(row))
-        .map(row => ({ params: { prefix: row.slug } })),
+      paths: getSingleSegmentPaths(safePages),
       fallback: false
     }
   }
 
   // ISR 模式：预生成最新10篇，其余按需渲染
-  const tops = getPriorityPages(allPages)
+  const tops = getPriorityPages(safePages)
 
   return {
-    paths: tops
-      .filter(row => checkSlugHasNoSlash(row))
-      .map(row => ({ params: { prefix: row.slug } })),
+    paths: getSingleSegmentPaths(tops),
     fallback: 'blocking'
   }
 }
