@@ -16,38 +16,39 @@ const PrefixSlug = props => {
   return <Slug {...props} />
 }
 
+const getTwoSegmentPaths = pages =>
+  (Array.isArray(pages) ? pages : [])
+    .filter(row => checkSlugHasOneSlash(row))
+    .map(row => {
+      const parts = String(row.slug || '').replace(/^\//, '').split('/')
+      return {
+        params: {
+          prefix: parts[0],
+          slug: parts[1]
+        }
+      }
+    })
+    .filter(path => path.params.prefix && path.params.slug)
+
 export async function getStaticPaths() {
   const from = 'slug-paths'
   const { allPages } = await fetchGlobalAllData({ from })
+  const safePages = Array.isArray(allPages) ? allPages : []
 
   // Export 模式：全量预生成
   if (isExport()) {
-    await prefetchAllBlockMaps(allPages)
+    await prefetchAllBlockMaps(safePages)
     return {
-      paths: allPages
-        ?.filter(row => checkSlugHasOneSlash(row))
-        .map(row => ({
-          params: {
-            prefix: row.slug.split('/')[0],
-            slug: row.slug.split('/')[1]
-          }
-        })),
+      paths: getTwoSegmentPaths(safePages),
       fallback: false
     }
   }
 
   // ISR 模式：预生成最新10篇（仅两段路径格式）
-  const tops = getPriorityPages(allPages)
+  const tops = getPriorityPages(safePages)
 
   return {
-    paths: tops
-      .filter(p => checkSlugHasOneSlash(p))
-      .map(row => ({
-        params: {
-          prefix: row.slug.split('/')[0],
-          slug: row.slug.split('/')[1]
-        }
-      })),
+    paths: getTwoSegmentPaths(tops),
     fallback: 'blocking'
   }
 }
