@@ -4,6 +4,10 @@ import { siteConfig } from '@/lib/config'
 import { fetchGlobalAllData } from '@/lib/db/SiteDataApi'
 import getLinksAndCategories from '@/lib/links'
 import { DynamicLayout } from '@/themes/theme'
+import HexoHeader from '@/themes/hexo/components/Header'
+import HexoSideRight from '@/themes/hexo/components/SideRight'
+import HexoFooter from '@/themes/hexo/components/Footer'
+import { Style as HexoStyle } from '@/themes/hexo/style'
 
 const DEFAULT_LINKS_DB_ID = '2755906f3c428088928dfc62610854dc'
 
@@ -289,6 +293,28 @@ function LinksBody({ data = [], categories = [], debug }) {
   )
 }
 
+function HexoLinksLayout(props) {
+  return (
+    <div id='theme-hexo' className={`${siteConfig('FONT_STYLE')} dark:bg-black scroll-smooth`}>
+      <HexoStyle />
+      <HexoHeader {...props} />
+      <main
+        id='wrapper'
+        className='pt-16 bg-hexo-background-gray dark:bg-black w-full py-8 md:px-8 lg:px-24 min-h-screen relative'>
+        <div
+          id='container-inner'
+          className='w-full mx-auto lg:flex lg:space-x-4 justify-center relative z-10'>
+          <div className='w-full max-w-4xl h-full overflow-hidden pt-8'>
+            <LinksBody data={props.items} categories={props.categories} debug={props.debug} />
+          </div>
+          <HexoSideRight {...props} />
+        </div>
+      </main>
+      <HexoFooter title={siteConfig('TITLE')} />
+    </div>
+  )
+}
+
 export default function Links(props) {
   const theme = siteConfig('THEME', BLOG.THEME, props?.NOTION_CONFIG)
   const siteTitle = siteConfig('TITLE', BLOG.TITLE, props?.NOTION_CONFIG) || BLOG?.TITLE || 'Site'
@@ -300,9 +326,13 @@ export default function Links(props) {
         <title>{pageTitle}</title>
         <meta name='description' content='友情链接' />
       </Head>
-      <DynamicLayout theme={theme} layoutName='LayoutBase' {...props}>
-        <LinksBody data={props.items} categories={props.categories} debug={props.debug} />
-      </DynamicLayout>
+      {theme === 'hexo' ? (
+        <HexoLinksLayout {...props} />
+      ) : (
+        <DynamicLayout theme={theme} layoutName='LayoutBase' {...props}>
+          <LinksBody data={props.items} categories={props.categories} debug={props.debug} />
+        </DynamicLayout>
+      )}
     </>
   )
 }
