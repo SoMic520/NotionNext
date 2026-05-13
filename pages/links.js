@@ -7,6 +7,8 @@ import { DynamicLayout } from '@/themes/theme'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+const DEFAULT_LINKS_DB_ID = '2755906f3c428088928dfc62610854dc'
+
 function normalizeUrl(u) {
   if (!u) return ''
   let s = String(u).trim()
@@ -407,6 +409,7 @@ function LinksBody({ data = [], categories = [], debug }) {
           {debug?.__debug && (
             <pre>{JSON.stringify(debug.__debug, null, 2)}</pre>
           )}
+          {debug?.error && <pre>{debug.error}</pre>}
         </div>
       ) : (
         <div className='links-groups'>
@@ -436,12 +439,12 @@ function LinksBody({ data = [], categories = [], debug }) {
           --links-muted:#64748b;
           --links-box:#cfd6e3;
           --links-ring:#7aa2ff;
-          --links-card-bg:rgba(255,255,255,.78);
+          --links-card-bg:transparent;
           --links-panel-bg:#ffffff;
           width:100%;
-          max-width:1100px;
+          max-width:100%;
           margin:0 auto;
-          padding:12px 16px 60px;
+          padding:0 0 60px;
         }
         :global(.dark) .links-wrap{
           --links-txt:#e5e7eb;
@@ -449,7 +452,7 @@ function LinksBody({ data = [], categories = [], debug }) {
           --links-muted:#94a3b8;
           --links-box:#273448;
           --links-ring:#4aa8ff;
-          --links-card-bg:rgba(15,23,42,.62);
+          --links-card-bg:transparent;
           --links-panel-bg:#0f172a;
         }
         .links-hd h1{ margin:0; font-size:30px; font-weight:900; letter-spacing:.2px; color:var(--links-txt) }
@@ -472,17 +475,16 @@ function LinksBody({ data = [], categories = [], debug }) {
         .links-group-count{ font-size:12px; color:var(--links-muted) }
         .links-cards{
           list-style:none; padding:0; margin:0;
-          display:grid; gap:14px;
-          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          display:grid; gap:14px 24px;
+          grid-template-columns: repeat(2, minmax(260px, 1fr));
           align-items: stretch;
         }
         .links-group-empty{
           border:1px solid var(--links-box); border-radius:14px;
           padding:12px 14px; color:var(--links-muted); font-size:14px
         }
-        @media (max-width: 640px){
+        @media (max-width: 900px){
           .links-cards{ grid-template-columns: 1fr; }
-          .links-wrap{ padding-left:10px; padding-right:10px; }
         }
       `}</style>
     </div>
@@ -524,8 +526,20 @@ export async function getStaticProps({ locale }) {
     base = { NOTION_CONFIG: {} }
   }
 
+  const notionConfig = base?.NOTION_CONFIG || {}
+  const linksDbId =
+    siteConfig('FRIENDS_DB_ID', null, notionConfig) ||
+    siteConfig('NOTION_LINKS_DB_ID', null, notionConfig) ||
+    notionConfig.FRIENDS_DB_ID ||
+    notionConfig.NOTION_LINKS_DB_ID ||
+    DEFAULT_LINKS_DB_ID
+
   try {
-    const result = await getLinksAndCategories({ debug: process.env.FRIENDS_DEBUG === '1' })
+    const result = await getLinksAndCategories({
+      debug: process.env.FRIENDS_DEBUG === '1',
+      FRIENDS_DB_ID: linksDbId,
+      NOTION_LINKS_DB_ID: linksDbId
+    })
     items = result?.items || []
     categories = result?.categories || []
     debug = result?.__debug ? { __debug: result.__debug } : null
@@ -541,8 +555,7 @@ export async function getStaticProps({ locale }) {
       ...base,
       items,
       categories,
-      debug,
-      fullWidth: true
+      debug
     },
     revalidate: 600
   }
