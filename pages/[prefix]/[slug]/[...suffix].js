@@ -16,41 +16,45 @@ const PrefixSlug = props => {
   return <Slug {...props} />
 }
 
+const getMultiSegmentPaths = pages =>
+  (Array.isArray(pages) ? pages : [])
+    .filter(row => checkSlugHasMorThanTwoSlash(row))
+    .map(row => {
+      const parts = String(row.slug || '').replace(/^\//, '').split('/')
+      return {
+        params: {
+          prefix: parts[0],
+          slug: parts[1],
+          suffix: parts.slice(2)
+        }
+      }
+    })
+    .filter(path =>
+      path.params.prefix &&
+      path.params.slug &&
+      Array.isArray(path.params.suffix) &&
+      path.params.suffix.length > 0
+    )
 
 export async function getStaticPaths() {
   const from = 'slug-paths'
   const { allPages } = await fetchGlobalAllData({ from })
+  const safePages = Array.isArray(allPages) ? allPages : []
 
   // Export 模式：全量预生成
   if (isExport()) {
-    await prefetchAllBlockMaps(allPages)
+    await prefetchAllBlockMaps(safePages)
     return {
-      paths: allPages
-        ?.filter(row => checkSlugHasMorThanTwoSlash(row))
-        .map(row => ({
-          params: {
-            prefix: row.slug.split('/')[0],
-            slug: row.slug.split('/')[1],
-            suffix: row.slug.split('/').slice(2)
-          }
-        })),
+      paths: getMultiSegmentPaths(safePages),
       fallback: false
     }
   }
 
   // ISR 模式：预生成最新10篇（仅三段以上路径格式）
-  const tops = getPriorityPages(allPages)
+  const tops = getPriorityPages(safePages)
 
   return {
-    paths: tops
-      .filter(p => checkSlugHasMorThanTwoSlash(p))
-      .map(row => ({
-        params: {
-          prefix: row.slug.split('/')[0],
-          slug: row.slug.split('/')[1],
-          suffix: row.slug.split('/').slice(2)
-        }
-      })),
+    paths: getMultiSegmentPaths(tops),
     fallback: 'blocking'
   }
 }
@@ -64,7 +68,6 @@ export async function getStaticProps({
   params: { prefix, slug, suffix },
   locale
 }) {
-
   const props = await resolvePostProps({
     prefix,
     slug,
