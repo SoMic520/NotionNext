@@ -3,7 +3,7 @@
  */
 module.exports = {
   CUSTOM_RIGHT_CLICK_CONTEXT_MENU:
-    process.env.NEXT_PUBLIC_CUSTOM_RIGHT_CLICK_CONTEXT_MENU || true, // 自定义右键菜单，覆盖系统菜单
+    process.env.NEXT_PUBLIC_CUSTOM_RIGHT_CLICK_CONTEXT_MENU || false, // 关闭自定义右键菜单，恢复系统默认菜单
   CUSTOM_RIGHT_CLICK_CONTEXT_MENU_THEME_SWITCH:
     process.env.NEXT_PUBLIC_CUSTOM_RIGHT_CLICK_CONTEXT_MENU_THEME_SWITCH ||
     true, // 是否显示切换主题
@@ -16,5 +16,5 @@ module.exports = {
   CUSTOM_RIGHT_CLICK_CONTEXT_MENU_CATEGORY:
     process.env.NEXT_PUBLIC_CUSTOM_RIGHT_CLICK_CONTEXT_MENU_CATEGORY || true, // 是否显示分类
   CUSTOM_RIGHT_CLICK_CONTEXT_MENU_TAG:
-    process.env.NEXT_PUBLIC_CUSTOM_RIGHT_CLICK_CONTEXT_MENU_THEME_TAG || true // 是否显示标签
+    process.env.NEXT_PUBLIC_CUSTOM_RIGHT_CLICK_MENU_THEME_TAG || true // 是否显示标签
 }
