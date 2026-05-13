@@ -1,67 +1,87 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ButtonDarkModeFloat from './ButtonFloatDarkMode'
 import ButtonJumpToTop from './ButtonJumpToTop'
 
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
+function getScrollState() {
+  const scrollY = window.pageYOffset || document.documentElement.scrollTop || 0
+  const viewportHeight =
+    window.innerHeight || document.documentElement.clientHeight || 0
+  const documentHeight = Math.max(
+    document.body?.scrollHeight || 0,
+    document.documentElement?.scrollHeight || 0,
+    document.body?.offsetHeight || 0,
+    document.documentElement?.offsetHeight || 0
+  )
+  const fullHeight = Math.max(1, documentHeight - viewportHeight)
+  const percent = clamp(Math.round((scrollY / fullHeight) * 100), 0, 100)
+
+  return {
+    percent,
+    visible: scrollY > 180 && percent > 0
+  }
+}
+
 /**
- * 悬浮在右下角的按钮，当页面向下滚动100px时会出现
- * 当页面回到顶部时会隐藏
+ * 悬浮在右下角的按钮。
+ * 使用 requestAnimationFrame 节流，避免滚动时频繁 setState；
+ * 进度按整页滚动高度计算，按钮显隐加入轻微位移和缩放，避免闪烁。
  * @param {*} param0
  * @returns
  */
 export default function RightFloatArea({ floatSlot }) {
-  const [showFloatButton, switchShow] = useState(false)
+  const frameRef = useRef(null)
+  const lastStateRef = useRef({ visible: false, percent: 0 })
+  const [floatState, setFloatState] = useState(lastStateRef.current)
 
-  const scrollListener = useCallback(() => {
-    const targetRef =
-      document.getElementById('wrapper') || document.documentElement
-    const clientHeight = targetRef?.clientHeight || 0
-    const scrollY =
-      window.pageYOffset || document.documentElement.scrollTop || 0
-    const viewportHeight =
-      window.innerHeight || document.documentElement.clientHeight || 0
+  const updateFloatState = useCallback(() => {
+    frameRef.current = null
+    const nextState = getScrollState()
+    const prevState = lastStateRef.current
 
-    const fullHeight = Math.max(1, clientHeight - viewportHeight)
-
-    let per = parseFloat(((scrollY / fullHeight) * 100).toFixed(0))
-
-    // 完整的边界处理
-    if (isNaN(per) || per < 0) per = 0
-    if (per > 100) per = 100
-
-    const shouldShow = scrollY > 100 && per > 0
-
-    // 右下角显示悬浮按钮
-    if (shouldShow !== showFloatButton) {
-      switchShow(shouldShow)
+    if (
+      nextState.visible !== prevState.visible ||
+      nextState.percent !== prevState.percent
+    ) {
+      lastStateRef.current = nextState
+      setFloatState(nextState)
     }
-  }, [showFloatButton])
+  }, [])
 
   useEffect(() => {
-    const throttledScroll = () => {
-      window.requestAnimationFrame(() => {
-        scrollListener()
-      })
+    const scheduleUpdate = () => {
+      if (frameRef.current) return
+      frameRef.current = window.requestAnimationFrame(updateFloatState)
     }
 
-    window.addEventListener('scroll', throttledScroll)
+    scheduleUpdate()
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', scheduleUpdate)
 
-    // 初始调用一次检查初始状态
-    scrollListener()
+    return () => {
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', scheduleUpdate)
+      if (frameRef.current) {
+        window.cancelAnimationFrame(frameRef.current)
+      }
+    }
+  }, [updateFloatState])
 
-    return () => window.removeEventListener('scroll', throttledScroll)
-  }, [scrollListener])
+  const visibleClass = floatState.visible
+    ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+    : 'invisible opacity-0 translate-y-3 scale-95 pointer-events-none'
 
   return (
     <div
       className={
-        (showFloatButton ? 'opacity-100 ' : 'invisible opacity-0') +
-        '  duration-300 transition-all bottom-12 right-1 fixed justify-end z-20  text-white bg-indigo-500 dark:bg-hexo-black-gray rounded-sm'
+        visibleClass +
+        ' duration-300 ease-out transition-all bottom-12 right-1 fixed justify-end z-20 text-white bg-indigo-500 dark:bg-hexo-black-gray rounded-md shadow-lg overflow-hidden'
       }>
-      <div
-        className={'justify-center flex flex-col items-center cursor-pointer'}>
+      <div className='justify-center flex flex-col items-center cursor-pointer divide-y divide-white/15 dark:divide-gray-700/70'>
         <ButtonDarkModeFloat />
         {floatSlot}
-        <ButtonJumpToTop />
+        <ButtonJumpToTop percent={floatState.percent} />
       </div>
     </div>
   )
