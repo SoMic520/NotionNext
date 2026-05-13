@@ -2,27 +2,50 @@ import { siteConfig } from '@/lib/config'
 import { useGlobal } from '@/lib/global'
 import CONFIG from '../config'
 
+function getFixedHeaderHeight() {
+  const header =
+    document.querySelector('#theme-hexo > header') ||
+    document.querySelector('header.sticky-nav') ||
+    document.querySelector('header')
+  return header?.getBoundingClientRect?.().height || 0
+}
+
+function getContentStartElement() {
+  const selectors = [
+    '#article-wrapper',
+    '#notion-article',
+    '#posts-wrapper',
+    '#container',
+    '#container-inner',
+    '#wrapper'
+  ]
+
+  for (const selector of selectors) {
+    const el = document.querySelector(selector)
+    if (el) return el
+  }
+
+  return null
+}
+
 /**
- * 跳转到内容区顶部
- * Hexo 主题有封面/文章头图时，回到 window 顶部会跳回封面；
- * 这里优先回到 #wrapper 主内容区起点，保持在文章列表/正文开始位置。
- * @param targetRef 关联高度的目标html标签
- * @param showPercent 是否显示百分比
- * @returns {JSX.Element}
- * @constructor
+ * 跳转到内容区顶部。
+ * 首页优先回到文章列表 #container；文章页优先回到 #article-wrapper；
+ * 这样不会跳回 Hexo 顶部封面，而是回到当前截图中的内容起点。
  */
 const ButtonJumpToTop = ({ showPercent = true, percent }) => {
   const { locale } = useGlobal()
 
   const jumpToContentTop = () => {
-    const wrapper = document.getElementById('wrapper')
-    const header = document.querySelector('header')
-    const headerHeight = header?.getBoundingClientRect?.().height || 0
+    const target = getContentStartElement()
+    const headerHeight = getFixedHeaderHeight()
 
-    if (wrapper) {
-      const wrapperTop = wrapper.getBoundingClientRect().top + window.pageYOffset
-      const targetTop = Math.max(0, wrapperTop - headerHeight - 8)
-      window.scrollTo({ top: targetTop, behavior: 'smooth' })
+    if (target) {
+      const targetTop = target.getBoundingClientRect().top + window.pageYOffset
+      window.scrollTo({
+        top: Math.max(0, targetTop - headerHeight - 10),
+        behavior: 'smooth'
+      })
       return
     }
 
