@@ -194,13 +194,18 @@ const Style = () => {
         width: 100%;
         height: 100%;
         background: linear-gradient(
-          to bottom,
-          rgba(0, 0, 0, 0.5) 0%,
-          rgba(0, 0, 0, 0.2) 10%,
-          rgba(0, 0, 0, 0) 25%,
-          rgba(0, 0, 0, 0.2) 75%,
-          rgba(0, 0, 0, 0.5) 100%
+          180deg,
+          rgba(248, 251, 255, 0.92) 0%,
+          rgba(248, 251, 255, 0.65) 48%,
+          rgba(248, 251, 255, 0.92) 100%
         );
+      }
+
+      #theme-hexo .hero-content-panel {
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(210, 227, 252, 0.95);
+        box-shadow: 0 14px 50px rgba(32, 33, 36, 0.12);
+        backdrop-filter: blur(12px);
       }
 
       /* Custem */

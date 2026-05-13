@@ -59,14 +59,15 @@ const Hero = props => {
     <header
       id='header'
       style={{ zIndex: 1 }}
-      className='w-full h-screen relative bg-black'>
-      <div className='text-white absolute bottom-0 flex flex-col h-full items-center justify-center w-full '>
+      className='w-full h-screen relative overflow-hidden bg-[#f8fbff]'>
+      <div className='text-slate-900 absolute bottom-0 flex flex-col h-full items-center justify-center w-full px-6'>
+        <div className='hero-content-panel w-full max-w-5xl rounded-[2rem] px-8 py-10 md:px-14 md:py-16'>
         {/* 站点标题 */}
-        <div className='font-black text-4xl md:text-5xl shadow-text'>
+        <div className='font-black text-4xl md:text-6xl tracking-tight text-center'>
           {siteInfo?.title || siteConfig('TITLE')}
         </div>
         {/* 站点欢迎语 */}
-        <div className='mt-2 h-12 items-center text-center font-medium shadow-text text-lg'>
+        <div className='mt-4 h-12 items-center text-center font-medium text-lg text-slate-600'>
           <span id='typed' />
         </div>
 
@@ -74,11 +75,12 @@ const Hero = props => {
         {siteConfig('HEXO_HOME_NAV_BUTTONS', null, CONFIG) && (
           <NavButtonGroup {...props} />
         )}
+        </div>
 
         {/* 滚动按钮 */}
         <div
           onClick={scrollToWrapper}
-          className='z-10 cursor-pointer w-full text-center py-4 text-3xl absolute bottom-10 text-white'>
+          className='z-10 cursor-pointer w-full text-center py-4 text-3xl absolute bottom-10 text-slate-500'>
           <div className='opacity-70 animate-bounce text-xs'>
             {siteConfig('HEXO_SHOW_START_READING', null, CONFIG) &&
               locale.COMMON.START_READING}
@@ -91,7 +93,7 @@ const Hero = props => {
         id='header-cover'
         alt={siteInfo?.title}
         src={siteInfo?.pageCover}
-        className={`header-cover w-full h-screen object-cover object-center ${siteConfig('HEXO_HOME_NAV_BACKGROUND_IMG_FIXED', null, CONFIG) ? 'fixed' : ''}`}
+        className={`header-cover w-full h-screen object-cover object-center opacity-20 ${siteConfig('HEXO_HOME_NAV_BACKGROUND_IMG_FIXED', null, CONFIG) ? 'fixed' : ''}`}
       />
     </header>
   )
